@@ -39,6 +39,8 @@ private let defaultRingColorPresetID = "default"
 private let defaultRingOpacityPresetID = "100"
 private let defaultAvatarColorKey = "__default__"
 private let liveUsageURL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
+private let codexNewThreadURL = URL(string: "codex://threads/new")!
+private let codexSettingsURL = URL(string: "codex://settings")!
 
 struct RingColorPalette {
     var primary: NSColor
@@ -916,6 +918,7 @@ final class LimitRingsApp: NSObject {
     private var frameTimer: Timer?
     private var animationTimer: Timer?
     private var mouseDownMonitor: Any?
+    private var rightMouseDownMonitor: Any?
     private var mouseDragMonitor: Any?
     private var mouseUpMonitor: Any?
     private var mouseMoveMonitor: Any?
@@ -964,7 +967,7 @@ final class LimitRingsApp: NSObject {
         pendingGlobalStateWatcherRestart?.cancel()
         pendingFrameUpdate?.cancel()
         globalStateSource?.cancel()
-        [mouseDownMonitor, mouseDragMonitor, mouseUpMonitor, mouseMoveMonitor].compactMap { $0 }.forEach {
+        [mouseDownMonitor, rightMouseDownMonitor, mouseDragMonitor, mouseUpMonitor, mouseMoveMonitor].compactMap { $0 }.forEach {
             NSEvent.removeMonitor($0)
         }
     }
@@ -1519,9 +1522,14 @@ final class LimitRingsApp: NSObject {
     }
 
     private func installDragFollow() {
-        mouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] _ in
+        mouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
             DispatchQueue.main.async {
-                self?.beginDragFollowIfNeeded(at: NSEvent.mouseLocation)
+                self?.handleLeftMouseDown(event)
+            }
+        }
+        rightMouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.rightMouseDown]) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.openCodexSettingsIfNeeded(at: NSEvent.mouseLocation)
             }
         }
         mouseDragMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDragged]) { [weak self] _ in
@@ -1539,6 +1547,50 @@ final class LimitRingsApp: NSObject {
                 self?.updateTooltip(at: NSEvent.mouseLocation)
             }
         }
+    }
+
+    private func handleLeftMouseDown(_ event: NSEvent) {
+        if event.clickCount == 2 {
+            openProjectlessCodexThreadIfNeeded(at: NSEvent.mouseLocation)
+            return
+        }
+
+        beginDragFollowIfNeeded(at: NSEvent.mouseLocation)
+    }
+
+    private func openProjectlessCodexThreadIfNeeded(at mouse: CGPoint) {
+        guard isPetActionTarget(at: mouse) else { return }
+        clearActiveWorkspaceRoots()
+        NSWorkspace.shared.open(codexNewThreadURL)
+    }
+
+    private func openCodexSettingsIfNeeded(at mouse: CGPoint) {
+        guard isPetActionTarget(at: mouse) else { return }
+        NSWorkspace.shared.open(codexSettingsURL)
+    }
+
+    private func isPetActionTarget(at mouse: CGPoint) -> Bool {
+        guard ringsVisible else { return false }
+        updateFrame()
+        guard currentPetFrameAppKit != nil else { return false }
+        return isHoveringRingOrPet(mouse)
+    }
+
+    private func clearActiveWorkspaceRoots() {
+        guard let data = try? Data(contentsOf: config.globalStatePath),
+              var payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let activeRoots = payload["active-workspace-roots"] as? [Any],
+              !activeRoots.isEmpty else {
+            return
+        }
+
+        payload["active-workspace-roots"] = []
+        guard JSONSerialization.isValidJSONObject(payload),
+              let output = try? JSONSerialization.data(withJSONObject: payload) else {
+            return
+        }
+
+        try? output.write(to: config.globalStatePath, options: [.atomic])
     }
 
     private func beginDragFollowIfNeeded(at mouse: CGPoint) {
