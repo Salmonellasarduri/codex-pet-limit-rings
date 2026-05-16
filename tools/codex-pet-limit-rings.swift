@@ -349,7 +349,7 @@ struct LimitRingRenderer {
 
         drawModelLimitDots(context, center: center, radius: outerRadius + 11.0, state: state)
         if showsReadout {
-            drawLimitReadouts(context, center: center, outerRadius: outerRadius, innerRadius: innerRadius, bounds: rect)
+            drawLimitReadouts(context, bounds: rect)
         }
         context.restoreGState()
     }
@@ -359,12 +359,11 @@ struct LimitRingRenderer {
         case secondary
     }
 
-    private struct LimitReadout {
-        var text: String
-        var ringPoint: CGPoint
-        var labelRect: CGRect
+    private struct LimitHUDRow {
+        var label: String
+        var remainingText: String
+        var resetText: String
         var color: NSColor
-        var angle: CGFloat
     }
 
     private func urgency(for bucket: LimitBucket?) -> Double {
@@ -460,145 +459,215 @@ struct LimitRingRenderer {
         context.restoreGState()
     }
 
-    private func drawLimitReadouts(_ context: CGContext, center: CGPoint, outerRadius: CGFloat, innerRadius: CGFloat, bounds: CGRect) {
-        var readouts: [LimitReadout] = []
+    private func drawLimitReadouts(_ context: CGContext, bounds: CGRect) {
+        let rows = limitHUDRows()
+        if rows.isEmpty {
+            drawEmptyLimitHUD(context, bounds: bounds)
+            return
+        }
+
+        drawLimitHUD(context, rows: rows, bounds: bounds)
+    }
+
+    private func limitHUDRows() -> [LimitHUDRow] {
+        var rows: [LimitHUDRow] = []
         if let primary = state.primary {
-            readouts.append(makeReadout(
-                text: formatPercent(primary.remainingPercent),
-                center: center,
-                ringRadius: outerRadius,
-                labelRadius: outerRadius + 22.0,
-                remainingPercent: primary.remainingPercent,
-                color: color(forRemaining: primary.remainingPercent, role: .primary),
-                bounds: bounds
-            ))
+            rows.append(makeHUDRow(bucket: primary, role: .primary, fallbackLabel: "4h"))
         }
-
         if let secondary = state.secondary {
-            readouts.append(makeReadout(
-                text: formatPercent(secondary.remainingPercent),
-                center: center,
-                ringRadius: innerRadius,
-                labelRadius: innerRadius + 21.0,
-                remainingPercent: secondary.remainingPercent,
-                color: color(forRemaining: secondary.remainingPercent, role: .secondary),
-                bounds: bounds
-            ))
+            rows.append(makeHUDRow(bucket: secondary, role: .secondary, fallbackLabel: "Week"))
         }
-
-        for readout in resolveReadoutOverlaps(readouts, bounds: bounds) {
-            drawReadout(context, readout: readout)
-        }
+        return rows
     }
 
-    private func makeReadout(
-        text: String,
-        center: CGPoint,
-        ringRadius: CGFloat,
-        labelRadius: CGFloat,
-        remainingPercent: Double,
-        color: NSColor,
-        bounds: CGRect
-    ) -> LimitReadout {
-        let angle = -CGFloat.pi / 2.0 + CGFloat(max(remainingPercent, 1.8) / 100.0) * CGFloat.pi * 2.0
-        let ringPoint = point(center: center, radius: ringRadius, angle: angle)
-        let labelPoint = point(center: center, radius: labelRadius, angle: angle)
-        let labelSize = CGSize(width: text.count > 3 ? 45 : 38, height: 22)
-        var labelRect = CGRect(
-            x: labelPoint.x - labelSize.width / 2,
-            y: labelPoint.y - labelSize.height / 2,
-            width: labelSize.width,
-            height: labelSize.height
+    private func makeHUDRow(bucket: LimitBucket, role: RingRole, fallbackLabel: String) -> LimitHUDRow {
+        LimitHUDRow(
+            label: limitLabel(for: bucket, fallback: fallbackLabel),
+            remainingText: "\(formatPercent(bucket.remainingPercent)) left",
+            resetText: formatResetText(for: bucket),
+            color: color(forRemaining: bucket.remainingPercent, role: role)
         )
-        labelRect = clamp(labelRect, inside: bounds)
-        return LimitReadout(text: text, ringPoint: ringPoint, labelRect: labelRect, color: color, angle: angle)
     }
 
-    private func resolveReadoutOverlaps(_ readouts: [LimitReadout], bounds: CGRect) -> [LimitReadout] {
-        guard readouts.count > 1 else { return readouts }
-        var resolved = readouts
+    private func drawLimitHUD(_ context: CGContext, rows: [LimitHUDRow], bounds: CGRect) {
+        let rect = hudRect(rowCount: rows.count, bounds: bounds)
+        context.saveGState()
+        let path = CGPath(roundedRect: rect, cornerWidth: 8.0, cornerHeight: 8.0, transform: nil)
+        context.setShadow(offset: .zero, blur: 10.0, color: NSColor(calibratedWhite: 0.0, alpha: 0.38).cgColor)
+        context.setFillColor(NSColor(calibratedWhite: 0.055, alpha: 0.84).cgColor)
+        context.addPath(path)
+        context.fillPath()
+        context.setShadow(offset: .zero, blur: 0.0, color: nil)
+        context.setStrokeColor(NSColor(calibratedWhite: 1.0, alpha: 0.14).cgColor)
+        context.setLineWidth(1.0)
+        context.addPath(path)
+        context.strokePath()
 
-        let averageAngle = resolved.map(\.angle).reduce(0, +) / CGFloat(resolved.count)
-        let tangent = CGPoint(x: -sin(averageAngle), y: cos(averageAngle))
-        for index in resolved.indices {
-            let direction = index == 0 ? -1.0 : 1.0
-            resolved[index].labelRect = clamp(resolved[index].labelRect.offsetBy(dx: tangent.x * 12.0 * direction, dy: tangent.y * 12.0 * direction), inside: bounds)
+        let paddingX: CGFloat = 9.0
+        let rowHeight: CGFloat = 20.0
+        let rowGap: CGFloat = 4.0
+        let availableWidth = rect.width - paddingX * 2.0 - 8.0
+        let textWidth = availableWidth - 8.0
+        let labelWidth: CGFloat = 30.0
+        let contentGap: CGFloat = 5.0
+        let contentFontSize = hudContentFontSize(for: rows, maxWidth: textWidth - labelWidth - contentGap)
+
+        for (index, row) in rows.enumerated() {
+            let rowY = rect.maxY - 8.0 - rowHeight - CGFloat(index) * (rowHeight + rowGap)
+            let rowRect = CGRect(x: rect.minX + paddingX, y: rowY, width: availableWidth, height: rowHeight)
+            let accentRect = CGRect(x: rowRect.minX, y: rowRect.midY - 4.2, width: 3.0, height: 8.4)
+            context.setFillColor(row.color.withAlphaComponent(0.95).cgColor)
+            context.fillEllipse(in: accentRect)
+
+            let textRect = CGRect(x: rowRect.minX + 8.0, y: rowRect.minY + 1.0, width: rowRect.width - 8.0, height: rowHeight)
+            drawHUDRow(row, in: textRect, labelWidth: labelWidth, contentGap: contentGap, contentFontSize: contentFontSize)
         }
 
-        for _ in 0..<8 {
-            var changed = false
-            for firstIndex in 0..<resolved.count {
-                for secondIndex in (firstIndex + 1)..<resolved.count {
-                    let first = expanded(resolved[firstIndex].labelRect)
-                    let second = expanded(resolved[secondIndex].labelRect)
-                    guard first.intersects(second) else { continue }
-
-                    let xOverlap = min(first.maxX, second.maxX) - max(first.minX, second.minX)
-                    let yOverlap = min(first.maxY, second.maxY) - max(first.minY, second.minY)
-                    let gap: CGFloat = 6.0
-                    if xOverlap <= yOverlap {
-                        let direction: CGFloat = resolved[firstIndex].labelRect.midX <= resolved[secondIndex].labelRect.midX ? -1.0 : 1.0
-                        let nudge = xOverlap / 2.0 + gap
-                        resolved[firstIndex].labelRect = resolved[firstIndex].labelRect.offsetBy(dx: direction * nudge, dy: 0)
-                        resolved[secondIndex].labelRect = resolved[secondIndex].labelRect.offsetBy(dx: -direction * nudge, dy: 0)
-                    } else {
-                        let direction: CGFloat = resolved[firstIndex].labelRect.midY <= resolved[secondIndex].labelRect.midY ? -1.0 : 1.0
-                        let nudge = yOverlap / 2.0 + gap
-                        resolved[firstIndex].labelRect = resolved[firstIndex].labelRect.offsetBy(dx: 0, dy: direction * nudge)
-                        resolved[secondIndex].labelRect = resolved[secondIndex].labelRect.offsetBy(dx: 0, dy: -direction * nudge)
-                    }
-
-                    resolved[firstIndex].labelRect = clamp(resolved[firstIndex].labelRect, inside: bounds)
-                    resolved[secondIndex].labelRect = clamp(resolved[secondIndex].labelRect, inside: bounds)
-                    changed = true
-                }
-            }
-            if !changed { break }
-        }
-
-        return resolved
+        context.restoreGState()
     }
 
-    private func expanded(_ rect: CGRect) -> CGRect {
-        rect.insetBy(dx: -4.0, dy: -3.0)
+    private func drawEmptyLimitHUD(_ context: CGContext, bounds: CGRect) {
+        let text = "Waiting for limit data"
+        let rect = clampHUDRect(CGRect(x: bounds.midX - 76.0, y: bounds.minY + 10.0, width: 152.0, height: 32.0), bounds: bounds)
+
+        context.saveGState()
+        let path = CGPath(roundedRect: rect, cornerWidth: 8.0, cornerHeight: 8.0, transform: nil)
+        context.setShadow(offset: .zero, blur: 10.0, color: NSColor(calibratedWhite: 0.0, alpha: 0.34).cgColor)
+        context.setFillColor(NSColor(calibratedWhite: 0.055, alpha: 0.82).cgColor)
+        context.addPath(path)
+        context.fillPath()
+        context.setShadow(offset: .zero, blur: 0.0, color: nil)
+        context.setStrokeColor(NSColor(calibratedWhite: 1.0, alpha: 0.12).cgColor)
+        context.setLineWidth(1.0)
+        context.addPath(path)
+        context.strokePath()
+        drawHUDText(text, in: rect.insetBy(dx: 10.0, dy: 7.0), fontSize: 9.4, weight: .medium, color: NSColor(calibratedWhite: 1.0, alpha: 0.76), alignment: .center)
+        context.restoreGState()
     }
 
-    private func clamp(_ rect: CGRect, inside bounds: CGRect) -> CGRect {
+    private func hudRect(rowCount: Int, bounds: CGRect) -> CGRect {
+        let width = min(max(bounds.width - 8.0, 148.0), 218.0)
+        let height = 18.0 + CGFloat(rowCount) * 20.0 + CGFloat(max(rowCount - 1, 0)) * 4.0
+        let candidate = CGRect(x: bounds.midX - width / 2.0, y: bounds.minY + 8.0, width: width, height: height)
+        return clampHUDRect(candidate, bounds: bounds)
+    }
+
+    private func clampHUDRect(_ rect: CGRect, bounds: CGRect) -> CGRect {
         var clamped = rect
-        let inset = bounds.insetBy(dx: 4, dy: 4)
+        let inset = bounds.insetBy(dx: 4.0, dy: 4.0)
+        clamped.size.width = min(clamped.width, inset.width)
+        clamped.size.height = min(clamped.height, inset.height)
         clamped.origin.x = min(max(clamped.minX, inset.minX), inset.maxX - clamped.width)
         clamped.origin.y = min(max(clamped.minY, inset.minY), inset.maxY - clamped.height)
         return clamped
     }
 
-    private func drawReadout(_ context: CGContext, readout: LimitReadout) {
-        context.saveGState()
-        context.setLineCap(.round)
-        context.setStrokeColor(readout.color.withAlphaComponent(0.44).cgColor)
-        context.setLineWidth(1.2)
-        context.move(to: readout.ringPoint)
-        context.addLine(to: CGPoint(x: readout.labelRect.midX, y: readout.labelRect.midY))
-        context.strokePath()
+    private func drawHUDRow(_ row: LimitHUDRow, in rect: CGRect, labelWidth: CGFloat, contentGap: CGFloat, contentFontSize: CGFloat) {
+        let label = hudSegment(row.label, fontSize: 10.4, weight: .bold, color: row.color)
+        let labelSize = label.size()
+        label.draw(at: CGPoint(x: rect.minX, y: rect.midY - labelSize.height / 2.0 + 0.5))
 
-        let path = CGPath(roundedRect: readout.labelRect, cornerWidth: 8.0, cornerHeight: 8.0, transform: nil)
-        context.setShadow(offset: .zero, blur: 8.0, color: readout.color.withAlphaComponent(0.22).cgColor)
-        context.setFillColor(NSColor(calibratedWhite: 0.055, alpha: 0.78).cgColor)
-        context.addPath(path)
-        context.fillPath()
-        context.setShadow(offset: .zero, blur: 0.0, color: nil)
-        context.setStrokeColor(readout.color.withAlphaComponent(0.42).cgColor)
-        context.setLineWidth(1.0)
-        context.addPath(path)
-        context.strokePath()
+        let content = NSMutableAttributedString()
+        content.append(hudSegment(row.remainingText, fontSize: contentFontSize, weight: .semibold, color: NSColor(calibratedWhite: 1.0, alpha: 0.99)))
+        content.append(hudSegment(" ", fontSize: contentFontSize, weight: .medium, color: NSColor(calibratedWhite: 1.0, alpha: 0.90)))
+        content.append(hudSegment(row.resetText, fontSize: contentFontSize, weight: .semibold, color: NSColor(calibratedWhite: 1.0, alpha: 0.94)))
 
+        let contentSize = content.size()
+        content.draw(at: CGPoint(x: rect.minX + labelWidth + contentGap, y: rect.midY - contentSize.height / 2.0 + 0.5))
+    }
+
+    private func hudContentFontSize(for rows: [LimitHUDRow], maxWidth: CGFloat) -> CGFloat {
+        let longestText = rows
+            .map { "\($0.remainingText) \($0.resetText)" }
+            .max { $0.count < $1.count } ?? ""
+        for fontSize in stride(from: 10.8, through: 8.4, by: -0.2) {
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.monospacedSystemFont(ofSize: fontSize, weight: .semibold)
+            ]
+            if NSAttributedString(string: longestText, attributes: attrs).size().width <= maxWidth {
+                return fontSize
+            }
+        }
+        return 8.4
+    }
+
+    private func hudSegment(_ text: String, fontSize: CGFloat, weight: NSFont.Weight, color: NSColor) -> NSAttributedString {
+        NSAttributedString(
+            string: text,
+            attributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: fontSize, weight: weight),
+                .foregroundColor: color
+            ]
+        )
+    }
+
+    private func drawHUDText(
+        _ text: String,
+        in rect: CGRect,
+        fontSize: CGFloat,
+        weight: NSFont.Weight,
+        color: NSColor,
+        alignment: NSTextAlignment = .left
+    ) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = alignment
+        paragraph.lineBreakMode = .byTruncatingTail
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: 11.5, weight: .semibold),
-            .foregroundColor: NSColor(calibratedWhite: 1.0, alpha: 0.92)
+            .font: NSFont.monospacedSystemFont(ofSize: fontSize, weight: weight),
+            .foregroundColor: color,
+            .paragraphStyle: paragraph
         ]
-        let attributed = NSAttributedString(string: readout.text, attributes: attrs)
-        let textSize = attributed.size()
-        attributed.draw(at: CGPoint(x: readout.labelRect.midX - textSize.width / 2, y: readout.labelRect.midY - textSize.height / 2 + 0.5))
-        context.restoreGState()
+        NSAttributedString(string: text, attributes: attrs).draw(in: rect)
+    }
+
+    private func limitLabel(for bucket: LimitBucket, fallback: String) -> String {
+        if fallback == "4h" || fallback == "Week" {
+            return fallback
+        }
+        guard let minutes = bucket.windowMinutes else { return fallback }
+        if abs(minutes - 240.0) <= 10.0 {
+            return "4h"
+        }
+        if minutes >= 60.0 * 24.0 * 6.0 {
+            return "Week"
+        }
+        if minutes >= 60.0 {
+            return "\(Int((minutes / 60.0).rounded()))h"
+        }
+        return "\(Int(max(1.0, minutes.rounded())))m"
+    }
+
+    private func formatResetText(for bucket: LimitBucket) -> String {
+        guard let resetAt = bucket.resetAt else {
+            return "--"
+        }
+
+        let resetDate = Date(timeIntervalSince1970: resetAt)
+        let seconds = resetDate.timeIntervalSince(Date())
+        if seconds <= 0 {
+            return "now"
+        }
+        if seconds < 24.0 * 60.0 * 60.0 {
+            return "in \(formatResetDuration(seconds))"
+        }
+        return formatWeekdayTime(resetDate)
+    }
+
+    private func formatResetDuration(_ seconds: TimeInterval) -> String {
+        let totalMinutes = max(1, Int(ceil(seconds / 60.0)))
+        if totalMinutes < 60 {
+            return "\(totalMinutes)m"
+        }
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        return "\(hours):\(String(format: "%02d", minutes))"
+    }
+
+    private func formatWeekdayTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE H:mm"
+        return formatter.string(from: date)
     }
 
     private func drawModelLimitDots(_ context: CGContext, center: CGPoint, radius: CGFloat, state: LimitState) {
