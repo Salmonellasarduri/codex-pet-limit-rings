@@ -18,8 +18,7 @@ The rings are designed to be glanceable:
 - Outer and inner ring opacity can also be selected separately per pet.
 - Color still moves to amber and red as capacity gets low.
 - Hovering over the pet or rings shows the exact remaining percentages and reset timing in a readout below the pet, clear of the pet art.
-- Double-clicking the pet or rings opens Codex's Quick Chat in a new tab using Codex's own `File > Quick Chat` menu command.
-- Right-clicking the pet or rings opens a new Quick Chat tab, then opens Codex Settings in that tab.
+- Right-clicking the pet or rings opens Codex Settings.
 - A small menu-bar icon lets you hide the rings, choose colors and opacity, refresh data, or quit.
 
 When the Codex pet is closed, the rings disappear. When the pet comes back, they come back too. On multi-display setups, the rings stay with the pet instead of jumping to whichever screen is focused.
@@ -99,8 +98,6 @@ The app reads only local Codex files and one ChatGPT usage endpoint:
 - `~/.codex/logs_2.sqlite` is used as a cached fallback if live usage is unavailable.
 
 It does not require an OpenAI API key. It does not send pet images, screenshots, prompts, or repo contents anywhere.
-
-The click actions may require macOS Accessibility and Automation permission so the companion app can run Codex menu commands through System Events. It does not read keyboard input.
 
 ## Project Shape
 

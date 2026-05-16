@@ -1,5 +1,4 @@
 import AppKit
-import ApplicationServices
 import Darwin
 import Foundation
 import SQLite3
@@ -42,10 +41,6 @@ private let defaultRingColorPresetID = "default"
 private let defaultRingOpacityPresetID = "100"
 private let defaultAvatarColorKey = "__default__"
 private let liveUsageURL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
-private let codexBundleIdentifier = "com.openai.codex"
-private let codexAppBundleURL = URL(fileURLWithPath: "/Applications/Codex.app")
-private let codexQuickChatLaunchDelay: TimeInterval = 0.8
-private let codexQuickChatFollowupDelay: TimeInterval = 0.35
 private let codexSettingsURL = URL(string: "codex://settings")!
 
 struct RingColorPalette {
@@ -1569,24 +1564,12 @@ final class LimitRingsApp: NSObject {
     }
 
     private func handleLeftMouseDown(_ event: NSEvent) {
-        if event.clickCount == 2 {
-            openCodexQuickChatIfNeeded(at: NSEvent.mouseLocation)
-            return
-        }
-
         beginDragFollowIfNeeded(at: NSEvent.mouseLocation)
-    }
-
-    private func openCodexQuickChatIfNeeded(at mouse: CGPoint) {
-        guard isPetActionTarget(at: mouse) else { return }
-        openCodexQuickChatWhenReady()
     }
 
     private func openCodexSettingsIfNeeded(at mouse: CGPoint) {
         guard isPetActionTarget(at: mouse) else { return }
-        openCodexQuickChatWhenReady { [weak self] in
-            self?.openCodexSettings()
-        }
+        NSWorkspace.shared.open(codexSettingsURL)
     }
 
     private func isPetActionTarget(at mouse: CGPoint) -> Bool {
@@ -1594,64 +1577,6 @@ final class LimitRingsApp: NSObject {
         updateFrame()
         guard currentPetFrameAppKit != nil else { return false }
         return isHoveringRingOrPet(mouse)
-    }
-
-    private func openCodexSettings() {
-        NSWorkspace.shared.open(codexSettingsURL)
-    }
-
-    private func openCodexQuickChatWhenReady(completion: (() -> Void)? = nil) {
-        if let app = NSRunningApplication.runningApplications(withBundleIdentifier: codexBundleIdentifier).first {
-            app.activate(options: [.activateAllWindows])
-            clickCodexQuickChatMenuItem(completion: completion)
-            return
-        }
-
-        let configuration = NSWorkspace.OpenConfiguration()
-        NSWorkspace.shared.openApplication(at: codexAppBundleURL, configuration: configuration) { [weak self] app, _ in
-            app?.activate(options: [.activateAllWindows])
-            DispatchQueue.main.asyncAfter(deadline: .now() + codexQuickChatLaunchDelay) {
-                self?.clickCodexQuickChatMenuItem(completion: completion)
-            }
-        }
-    }
-
-    private func clickCodexQuickChatMenuItem(completion: (() -> Void)? = nil) {
-        guard accessibilityTrustedForMenuClick() else {
-            NSSound.beep()
-            return
-        }
-
-        let source = """
-        tell application "Codex" to activate
-        tell application "System Events"
-            tell process "Codex"
-                set frontmost to true
-                click menu item "Quick Chat" of menu 1 of menu bar item "File" of menu bar 1
-            end tell
-        end tell
-        """
-
-        guard let script = NSAppleScript(source: source) else {
-            NSSound.beep()
-            return
-        }
-
-        var error: NSDictionary?
-        script.executeAndReturnError(&error)
-        guard error == nil else {
-            NSSound.beep()
-            return
-        }
-
-        guard let completion else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + codexQuickChatFollowupDelay, execute: completion)
-    }
-
-    private func accessibilityTrustedForMenuClick() -> Bool {
-        let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-        let options = [promptKey: true] as CFDictionary
-        return AXIsProcessTrustedWithOptions(options)
     }
 
     private func beginDragFollowIfNeeded(at mouse: CGPoint) {

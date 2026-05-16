@@ -13,8 +13,7 @@ The rings are pet-agnostic. They work with any pet Codex displays because the ap
 - `Refresh Now` rereads usage and pet-position state.
 - Hovering over the ring or pet shows exact remaining percentages and reset timing.
 - Dragging the pet makes the rings follow the gesture immediately while Codex persists the new position.
-- Double-clicking the ring or pet opens Codex Quick Chat in a new tab by running Codex's own `File > Quick Chat` menu command.
-- Right-clicking the ring or pet opens a new Quick Chat tab first, then opens Codex Settings in that tab through Codex's settings deep link.
+- Right-clicking the ring or pet opens Codex Settings through Codex's settings deep link.
 - Closing the Codex pet hides the rings.
 - Multi-display positioning uses the screen containing the pet bounds, not the currently focused screen.
 - macOS desktop/Space switching keeps the rings visible with the pet rather than tying them to one active desktop.
@@ -34,8 +33,6 @@ The app reads live usage first, then local files as support or fallback:
 The app watches `~/.codex/.codex-global-state.json` with a macOS file event source, so pet open/close and position writes trigger an immediate frame update. A slow frame timer remains as a fallback in case the file is replaced or an event is missed.
 
 No OpenAI API key is required. The menu summary says `Live` when the direct usage read succeeds and `Cached` when it is showing the local event-log fallback.
-
-The Quick Chat menu path does not edit Codex global state. macOS may require Accessibility and Automation permission for `codex-pet-limit-rings` before the companion app can run Codex's `File > Quick Chat` menu command through System Events. Settings uses the same new-tab menu path before opening `codex://settings`.
 
 ## Rendering Model
 

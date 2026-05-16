@@ -68,7 +68,7 @@ The outer ring is the short-window remaining percentage. The inner ring is the w
 
 Pet wakeups and moves are driven by a filesystem watcher on `~/.codex/.codex-global-state.json`, with a slow fallback timer for missed events. Keep that event-driven path intact when changing frame-following behavior.
 
-Double-clicking the pet runs Codex's own `File > Quick Chat` menu command through System Events. Right-clicking uses the same menu command first, then opens Codex Settings in the new tab. Do not implement this by mutating Codex's `active-workspace-roots`; a running Codex process keeps that state in memory.
+Right-clicking the pet opens Codex Settings through Codex's settings deep link. Do not implement projectless new chat by mutating Codex's `active-workspace-roots` or by replaying keyboard/menu UI automation; a running Codex process keeps workspace state in memory, and Codex does not currently expose a reliable external new-tab projectless command.
 
 ## Editing Workflow
 
