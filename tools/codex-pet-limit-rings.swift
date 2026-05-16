@@ -41,7 +41,6 @@ private let defaultRingColorPresetID = "default"
 private let defaultRingOpacityPresetID = "100"
 private let defaultAvatarColorKey = "__default__"
 private let liveUsageURL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
-private let codexNewThreadURL = URL(string: "codex://threads/new")!
 private let codexSettingsURL = URL(string: "codex://settings")!
 
 struct RingColorPalette {
@@ -1565,18 +1564,7 @@ final class LimitRingsApp: NSObject {
     }
 
     private func handleLeftMouseDown(_ event: NSEvent) {
-        if event.clickCount == 2 {
-            openProjectlessCodexThreadIfNeeded(at: NSEvent.mouseLocation)
-            return
-        }
-
         beginDragFollowIfNeeded(at: NSEvent.mouseLocation)
-    }
-
-    private func openProjectlessCodexThreadIfNeeded(at mouse: CGPoint) {
-        guard isPetActionTarget(at: mouse) else { return }
-        clearActiveWorkspaceRoots()
-        NSWorkspace.shared.open(codexNewThreadURL)
     }
 
     private func openCodexSettingsIfNeeded(at mouse: CGPoint) {
@@ -1589,23 +1577,6 @@ final class LimitRingsApp: NSObject {
         updateFrame()
         guard currentPetFrameAppKit != nil else { return false }
         return isHoveringRingOrPet(mouse)
-    }
-
-    private func clearActiveWorkspaceRoots() {
-        guard let data = try? Data(contentsOf: config.globalStatePath),
-              var payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let activeRoots = payload["active-workspace-roots"] as? [Any],
-              !activeRoots.isEmpty else {
-            return
-        }
-
-        payload["active-workspace-roots"] = []
-        guard JSONSerialization.isValidJSONObject(payload),
-              let output = try? JSONSerialization.data(withJSONObject: payload) else {
-            return
-        }
-
-        try? output.write(to: config.globalStatePath, options: [.atomic])
     }
 
     private func beginDragFollowIfNeeded(at mouse: CGPoint) {

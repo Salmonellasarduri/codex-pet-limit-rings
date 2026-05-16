@@ -13,6 +13,7 @@ The rings are pet-agnostic. They work with any pet Codex displays because the ap
 - `Refresh Now` rereads usage and pet-position state.
 - Hovering over the ring or pet shows exact remaining percentages and reset timing.
 - Dragging the pet makes the rings follow the gesture immediately while Codex persists the new position.
+- Right-clicking the ring or pet opens Codex Settings through Codex's settings deep link.
 - Closing the Codex pet hides the rings.
 - Multi-display positioning uses the screen containing the pet bounds, not the currently focused screen.
 - macOS desktop/Space switching keeps the rings visible with the pet rather than tying them to one active desktop.
