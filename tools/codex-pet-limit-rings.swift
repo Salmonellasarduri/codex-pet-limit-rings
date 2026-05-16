@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import Darwin
 import Foundation
 import SQLite3
@@ -41,7 +42,12 @@ private let defaultRingColorPresetID = "default"
 private let defaultRingOpacityPresetID = "100"
 private let defaultAvatarColorKey = "__default__"
 private let liveUsageURL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
-private let codexNewThreadURL = URL(string: "codex://threads/new")!
+private let codexBundleIdentifier = "com.openai.codex"
+private let codexAppBundleURL = URL(fileURLWithPath: "/Applications/Codex.app")
+private let codexQuickChatKeyCode: CGKeyCode = 0x2D
+private let codexQuickChatActivationDelay: TimeInterval = 0.18
+private let codexQuickChatLaunchDelay: TimeInterval = 0.8
+private let codexQuickChatFollowupDelay: TimeInterval = 0.35
 private let codexSettingsURL = URL(string: "codex://settings")!
 
 struct RingColorPalette {
@@ -1566,22 +1572,23 @@ final class LimitRingsApp: NSObject {
 
     private func handleLeftMouseDown(_ event: NSEvent) {
         if event.clickCount == 2 {
-            openProjectlessCodexThreadIfNeeded(at: NSEvent.mouseLocation)
+            openCodexQuickChatIfNeeded(at: NSEvent.mouseLocation)
             return
         }
 
         beginDragFollowIfNeeded(at: NSEvent.mouseLocation)
     }
 
-    private func openProjectlessCodexThreadIfNeeded(at mouse: CGPoint) {
+    private func openCodexQuickChatIfNeeded(at mouse: CGPoint) {
         guard isPetActionTarget(at: mouse) else { return }
-        clearActiveWorkspaceRoots()
-        NSWorkspace.shared.open(codexNewThreadURL)
+        sendCodexQuickChatShortcutWhenReady()
     }
 
     private func openCodexSettingsIfNeeded(at mouse: CGPoint) {
         guard isPetActionTarget(at: mouse) else { return }
-        NSWorkspace.shared.open(codexSettingsURL)
+        sendCodexQuickChatShortcutWhenReady { [weak self] in
+            self?.openCodexSettings()
+        }
     }
 
     private func isPetActionTarget(at mouse: CGPoint) -> Bool {
@@ -1591,21 +1598,54 @@ final class LimitRingsApp: NSObject {
         return isHoveringRingOrPet(mouse)
     }
 
-    private func clearActiveWorkspaceRoots() {
-        guard let data = try? Data(contentsOf: config.globalStatePath),
-              var payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let activeRoots = payload["active-workspace-roots"] as? [Any],
-              !activeRoots.isEmpty else {
+    private func openCodexSettings() {
+        NSWorkspace.shared.open(codexSettingsURL)
+    }
+
+    private func sendCodexQuickChatShortcutWhenReady(completion: (() -> Void)? = nil) {
+        if let app = NSRunningApplication.runningApplications(withBundleIdentifier: codexBundleIdentifier).first {
+            app.activate(options: [.activateAllWindows])
+            DispatchQueue.main.asyncAfter(deadline: .now() + codexQuickChatActivationDelay) { [weak self] in
+                self?.sendCodexQuickChatShortcut(completion: completion)
+            }
             return
         }
 
-        payload["active-workspace-roots"] = []
-        guard JSONSerialization.isValidJSONObject(payload),
-              let output = try? JSONSerialization.data(withJSONObject: payload) else {
+        let configuration = NSWorkspace.OpenConfiguration()
+        NSWorkspace.shared.openApplication(at: codexAppBundleURL, configuration: configuration) { [weak self] app, _ in
+            app?.activate(options: [.activateAllWindows])
+            DispatchQueue.main.asyncAfter(deadline: .now() + codexQuickChatLaunchDelay) {
+                self?.sendCodexQuickChatShortcut(completion: completion)
+            }
+        }
+    }
+
+    private func sendCodexQuickChatShortcut(completion: (() -> Void)? = nil) {
+        guard accessibilityTrustedForShortcut() else {
+            NSSound.beep()
             return
         }
 
-        try? output.write(to: config.globalStatePath, options: [.atomic])
+        let flags: CGEventFlags = [.maskCommand, .maskAlternate]
+        guard let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: codexQuickChatKeyCode, keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: codexQuickChatKeyCode, keyDown: false) else {
+            NSSound.beep()
+            return
+        }
+
+        keyDown.flags = flags
+        keyUp.flags = flags
+        keyDown.post(tap: .cghidEventTap)
+        keyUp.post(tap: .cghidEventTap)
+
+        guard let completion else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + codexQuickChatFollowupDelay, execute: completion)
+    }
+
+    private func accessibilityTrustedForShortcut() -> Bool {
+        let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        let options = [promptKey: true] as CFDictionary
+        return AXIsProcessTrustedWithOptions(options)
     }
 
     private func beginDragFollowIfNeeded(at mouse: CGPoint) {
