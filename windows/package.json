@@ -1,0 +1,17 @@
+{
+  "name": "codex-pet-limit-rings-windows",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Windows companion overlay for Codex pet usage-limit rings.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "sql.js": "^1.13.0"
+  },
+  "devDependencies": {
+    "electron": "^39.2.6"
+  }
+}

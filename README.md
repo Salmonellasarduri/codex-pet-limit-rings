@@ -50,6 +50,24 @@ Run a development build without installing the login item:
 tools/run-limit-rings.sh
 ```
 
+## Windows Preview
+
+The repository also includes a Windows MVP under `windows/`. It uses the same local Codex data contract as the macOS app, but renders the rings with an Electron transparent click-through overlay and a Windows tray icon.
+
+```powershell
+cd windows
+npm install
+npm start
+```
+
+Run the Windows parser and fallback checks:
+
+```powershell
+npm test
+```
+
+The Windows version currently supports show/hide, refresh, quit, pet-position following, live usage reads, and cached SQLite fallback. Color customization and launch-at-login packaging are intentionally left for a later pass.
+
 ## Managing The App
 
 The installer builds `~/Applications/CodexPetLimitRings.app` and registers a LaunchAgent so the rings can start again after login:
@@ -108,6 +126,11 @@ tools/
   run-limit-rings.sh               development launch
   build-limit-rings.sh             app bundle builder
   install-codex-skill.sh           copy the bundled skill into ~/.codex/skills
+
+windows/
+  src/                              Windows Electron companion app
+  test/                             parser and fallback checks
+  package.json                      Windows development scripts
 
 skills/codex-pet-limit-rings/
   SKILL.md                         Codex-agent workflow for this project
