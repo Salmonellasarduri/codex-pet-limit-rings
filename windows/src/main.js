@@ -1,7 +1,13 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { app, BrowserWindow, Menu, Tray, nativeImage } = require("electron");
+const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage } = require("electron");
 const { getDefaultCodexHome, readCodexState } = require("./codexState");
+const {
+  RING_COLOR_PRESETS,
+  RING_OPACITY_PRESETS,
+  RingSettingsStore,
+  resolvedRingStyle
+} = require("./settings");
 const { defaultLogsPath, emptyLimitState, readLatestUsage } = require("./usage");
 
 const STATE_DEBOUNCE_MS = 35;
@@ -15,7 +21,9 @@ class LimitRingsWindowsApp {
     this.statePath = path.join(this.codexHome, ".codex-global-state.json");
     this.authPath = path.join(this.codexHome, "auth.json");
     this.logsPath = defaultLogsPath(this.codexHome);
+    this.settingsStore = new RingSettingsStore(path.join(app.getPath("userData"), "settings.json"));
     this.overlay = null;
+    this.colorPicker = null;
     this.tray = null;
     this.stateWatcher = null;
     this.framePoll = null;
@@ -24,11 +32,13 @@ class LimitRingsWindowsApp {
     this.ringsVisible = true;
     this.usage = emptyLimitState();
     this.lastBounds = null;
+    this.currentAvatarID = null;
   }
 
   async run() {
     await this.createOverlay();
     this.createTray();
+    this.installColorPickerHandlers();
     this.updateFrame();
     await this.updateUsage();
     this.installStateWatcher();
@@ -79,6 +89,7 @@ class LimitRingsWindowsApp {
     const source = this.usage.source === "live" ? "Live" : this.usage.source === "log" ? "Cached" : "Waiting";
     const primary = this.usage.primary ? `${Math.round(this.usage.primary.remainingPercent)}% short` : "short --";
     const secondary = this.usage.secondary ? `${Math.round(this.usage.secondary.remainingPercent)}% weekly` : "weekly --";
+    const settings = this.currentSettings();
     const menu = Menu.buildFromTemplate([
       { label: `${source}: ${primary}, ${secondary}`, enabled: false },
       { type: "separator" },
@@ -90,6 +101,41 @@ class LimitRingsWindowsApp {
           this.ringsVisible = item.checked;
           this.updateFrame();
         }
+      },
+      {
+        label: "Ring Colors",
+        submenu: [
+          {
+            label: "Outer Ring",
+            submenu: this.colorMenuTemplate("outer", settings)
+          },
+          {
+            label: "Inner Ring",
+            submenu: this.colorMenuTemplate("inner", settings)
+          },
+          { type: "separator" },
+          {
+            label: "Reset This Pet",
+            click: () => {
+              this.settingsStore.resetAvatar(this.currentAvatarID);
+              this.updateTrayMenu();
+              this.sendSnapshot(Boolean(this.overlay && this.overlay.isVisible()));
+            }
+          }
+        ]
+      },
+      {
+        label: "Ring Opacity",
+        submenu: [
+          {
+            label: "Outer Ring",
+            submenu: this.opacityMenuTemplate("outer", settings)
+          },
+          {
+            label: "Inner Ring",
+            submenu: this.opacityMenuTemplate("inner", settings)
+          }
+        ]
       },
       {
         label: "Refresh Now",
@@ -105,6 +151,46 @@ class LimitRingsWindowsApp {
       }
     ]);
     this.tray.setContextMenu(menu);
+  }
+
+  colorMenuTemplate(ring, settings) {
+    const active = settings.colors[ring];
+    return [
+      ...RING_COLOR_PRESETS.map((preset) => ({
+        label: preset.title,
+        type: "radio",
+        checked: !active.custom && active.preset === preset.id,
+        click: () => {
+          this.settingsStore.setColorPreset(this.currentAvatarID, ring, preset.id);
+          this.updateTrayMenu();
+          this.sendSnapshot(Boolean(this.overlay && this.overlay.isVisible()));
+        }
+      })),
+      { type: "separator" },
+      {
+        label: "Custom...",
+        type: "radio",
+        checked: Boolean(active.custom),
+        click: () => this.openColorPicker(ring)
+      }
+    ];
+  }
+
+  opacityMenuTemplate(ring, settings) {
+    return RING_OPACITY_PRESETS.map((preset) => ({
+      label: preset.title,
+      type: "radio",
+      checked: settings.opacity[ring] === preset.id,
+      click: () => {
+        this.settingsStore.setOpacityPreset(this.currentAvatarID, ring, preset.id);
+        this.updateTrayMenu();
+        this.sendSnapshot(Boolean(this.overlay && this.overlay.isVisible()));
+      }
+    }));
+  }
+
+  currentSettings() {
+    return this.settingsStore.getForAvatar(this.currentAvatarID);
   }
 
   installStateWatcher() {
@@ -145,6 +231,9 @@ class LimitRingsWindowsApp {
       return;
     }
 
+    this.currentAvatarID = codexState.avatarId || null;
+    this.updateTrayMenu();
+
     if (!this.ringsVisible || !codexState.open || !codexState.petFrame) {
       this.hideOverlay();
       return;
@@ -180,8 +269,66 @@ class LimitRingsWindowsApp {
     }
     this.overlay.webContents.send("limit-rings:snapshot", {
       visible,
-      usage: this.usage
+      usage: this.usage,
+      style: resolvedRingStyle(this.currentSettings())
     });
+  }
+
+  openColorPicker(ring) {
+    if (this.colorPicker && !this.colorPicker.isDestroyed()) {
+      this.colorPicker.close();
+    }
+    const style = resolvedRingStyle(this.currentSettings());
+    const initialColor = ring === "inner" ? style.innerColor : style.outerColor;
+    this.colorPicker = new BrowserWindow({
+      width: 320,
+      height: 190,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      parent: this.overlay,
+      modal: false,
+      title: ring === "inner" ? "Choose Inner Ring Color" : "Choose Outer Ring Color",
+      webPreferences: {
+        preload: path.join(__dirname, "colorPickerPreload.js"),
+        contextIsolation: true,
+        nodeIntegration: false
+      }
+    });
+    const query = new URLSearchParams({ ring, color: initialColor });
+    this.colorPicker.loadFile(path.join(__dirname, "colorPicker.html"), { query: Object.fromEntries(query) });
+    this.colorPicker.on("closed", () => {
+      this.colorPicker = null;
+    });
+  }
+
+  installColorPickerHandlers() {
+    ipcMain.on("limit-rings:custom-color", (event, payload) => {
+      if (!this.isColorPickerSender(event.sender)) {
+        return;
+      }
+      if (!payload || !["outer", "inner"].includes(payload.ring)) {
+        return;
+      }
+      this.settingsStore.setCustomColor(this.currentAvatarID, payload.ring, payload.color);
+      if (this.colorPicker && !this.colorPicker.isDestroyed()) {
+        this.colorPicker.close();
+      }
+      this.updateTrayMenu();
+      this.sendSnapshot(Boolean(this.overlay && this.overlay.isVisible()));
+    });
+    ipcMain.on("limit-rings:close-color-picker", (event) => {
+      if (!this.isColorPickerSender(event.sender)) {
+        return;
+      }
+      if (this.colorPicker && !this.colorPicker.isDestroyed()) {
+        this.colorPicker.close();
+      }
+    });
+  }
+
+  isColorPickerSender(sender) {
+    return Boolean(this.colorPicker && !this.colorPicker.isDestroyed() && sender === this.colorPicker.webContents);
   }
 
   dispose() {
@@ -190,6 +337,9 @@ class LimitRingsWindowsApp {
     clearTimeout(this.pendingFrameUpdate);
     if (this.stateWatcher) {
       this.stateWatcher.close();
+    }
+    if (this.colorPicker && !this.colorPicker.isDestroyed()) {
+      this.colorPicker.close();
     }
   }
 }

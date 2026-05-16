@@ -3,6 +3,12 @@
   const context = canvas.getContext("2d");
   let snapshot = {
     usage: { primary: null, secondary: null, source: "none" },
+    style: {
+      outerColor: "#4cebc2",
+      innerColor: "#60b2ff",
+      outerOpacity: 1,
+      innerOpacity: 1
+    },
     visible: false
   };
   let phase = 0;
@@ -14,18 +20,35 @@
     context.setTransform(scale, 0, 0, scale, 0, 0);
   }
 
-  function colorFor(bucket, fallback) {
+  function hexToRgb(hex) {
+    if (!/^#[0-9a-fA-F]{6}$/.test(hex || "")) {
+      return { r: 76, g: 235, b: 194 };
+    }
+    return {
+      r: parseInt(hex.slice(1, 3), 16),
+      g: parseInt(hex.slice(3, 5), 16),
+      b: parseInt(hex.slice(5, 7), 16)
+    };
+  }
+
+  function rgba(hex, opacity) {
+    const color = hexToRgb(hex);
+    const alpha = Math.min(Math.max(Number(opacity) || 0, 0), 1);
+    return `rgba(${color.r}, ${color.g}, ${color.b}, ${alpha.toFixed(3)})`;
+  }
+
+  function colorFor(bucket, fallback, opacity) {
     const remaining = bucket ? bucket.remainingPercent : null;
     if (remaining !== null && remaining <= 12) {
-      return "rgba(255, 72, 92, 0.96)";
+      return `rgba(255, 72, 92, ${Math.min(Math.max(opacity, 0), 1).toFixed(3)})`;
     }
     if (remaining !== null && remaining <= 28) {
-      return "rgba(255, 176, 65, 0.96)";
+      return `rgba(255, 176, 65, ${Math.min(Math.max(opacity, 0), 1).toFixed(3)})`;
     }
     return fallback;
   }
 
-  function drawRing(centerX, centerY, radius, width, bucket, color, emptyColor) {
+  function drawRing(centerX, centerY, radius, width, bucket, color, emptyColor, missingColor) {
     context.lineCap = "round";
     context.lineWidth = width;
     context.strokeStyle = emptyColor;
@@ -35,7 +58,7 @@
 
     if (!bucket) {
       context.setLineDash([3, 10]);
-      context.strokeStyle = "rgba(255, 255, 255, 0.30)";
+      context.strokeStyle = missingColor;
       context.beginPath();
       context.arc(centerX, centerY, radius, -Math.PI / 2, Math.PI * 1.5);
       context.stroke();
@@ -90,17 +113,23 @@
     const innerRadius = outerRadius - 14;
     const breathe = 0.18 + Math.sin(phase) * 0.06;
 
+    const usage = snapshot.usage || {};
+    const style = snapshot.style || {};
+    const outerColor = style.outerColor || "#4cebc2";
+    const innerColor = style.innerColor || "#60b2ff";
+    const outerOpacity = typeof style.outerOpacity === "number" ? style.outerOpacity : 1;
+    const innerOpacity = typeof style.innerOpacity === "number" ? style.innerOpacity : 1;
+    const halo = hexToRgb(outerColor);
     const gradient = context.createRadialGradient(centerX, centerY, innerRadius - 10, centerX, centerY, outerRadius + 10);
-    gradient.addColorStop(0, "rgba(112, 244, 216, 0)");
-    gradient.addColorStop(1, `rgba(112, 244, 216, ${breathe})`);
+    gradient.addColorStop(0, `rgba(${halo.r}, ${halo.g}, ${halo.b}, 0)`);
+    gradient.addColorStop(1, `rgba(${halo.r}, ${halo.g}, ${halo.b}, ${breathe * outerOpacity})`);
     context.fillStyle = gradient;
     context.beginPath();
     context.arc(centerX, centerY, outerRadius + 9, 0, Math.PI * 2);
     context.fill();
 
-    const usage = snapshot.usage || {};
-    drawRing(centerX, centerY, outerRadius, 8, usage.primary, colorFor(usage.primary, "rgba(76, 235, 194, 0.96)"), "rgba(76, 235, 194, 0.16)");
-    drawRing(centerX, centerY, innerRadius, 6, usage.secondary, colorFor(usage.secondary, "rgba(96, 178, 255, 0.92)"), "rgba(96, 178, 255, 0.15)");
+    drawRing(centerX, centerY, outerRadius, 8, usage.primary, colorFor(usage.primary, rgba(outerColor, 0.96 * outerOpacity), outerOpacity), rgba(outerColor, 0.16 * outerOpacity), rgba(outerColor, 0.3 * outerOpacity));
+    drawRing(centerX, centerY, innerRadius, 6, usage.secondary, colorFor(usage.secondary, rgba(innerColor, 0.92 * innerOpacity), innerOpacity), rgba(innerColor, 0.15 * innerOpacity), rgba(innerColor, 0.3 * innerOpacity));
     drawText(width, height, usage);
 
     requestAnimationFrame(draw);

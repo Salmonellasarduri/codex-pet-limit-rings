@@ -14,6 +14,12 @@ npm start
 
 Use the tray icon to toggle rings, refresh usage data, or quit.
 
+The tray menu also includes:
+
+- `Ring Colors` for separate outer and inner ring presets or custom colors.
+- `Ring Opacity` for separate outer and inner opacity presets.
+- `Reset This Pet` to clear saved color and opacity settings for the current Codex pet.
+
 ## Test
 
 ```powershell

@@ -66,7 +66,7 @@ Run the Windows parser and fallback checks:
 npm test
 ```
 
-The Windows version currently supports show/hide, refresh, quit, pet-position following, live usage reads, and cached SQLite fallback. Color customization and launch-at-login packaging are intentionally left for a later pass.
+The Windows version currently supports show/hide, ring color and opacity menus, custom colors, refresh, quit, pet-position following, live usage reads, and cached SQLite fallback. Launch-at-login packaging is intentionally left for a later pass.
 
 ## Managing The App
 
