@@ -14,6 +14,7 @@ const STATE_DEBOUNCE_MS = 35;
 const FRAME_POLL_MS = 2000;
 const USAGE_POLL_MS = 20000;
 const OVERLAY_PADDING = 58;
+const APP_ICON_PATH = path.join(__dirname, "..", "assets", "spellbook-icon.png");
 
 class LimitRingsWindowsApp {
   constructor() {
@@ -50,6 +51,7 @@ class LimitRingsWindowsApp {
     this.overlay = new BrowserWindow({
       width: 220,
       height: 220,
+      icon: APP_ICON_PATH,
       frame: false,
       transparent: true,
       resizable: false,
@@ -283,6 +285,7 @@ class LimitRingsWindowsApp {
     this.colorPicker = new BrowserWindow({
       width: 320,
       height: 190,
+      icon: APP_ICON_PATH,
       resizable: false,
       minimizable: false,
       maximizable: false,
@@ -355,6 +358,13 @@ function panelBoundsForPet(petFrame) {
 }
 
 function createTrayIcon() {
+  if (fs.existsSync(APP_ICON_PATH)) {
+    const icon = nativeImage.createFromPath(APP_ICON_PATH);
+    if (!icon.isEmpty()) {
+      return icon.resize({ width: 32, height: 32 });
+    }
+  }
+
   const svg = encodeURIComponent(`
     <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
       <rect width="32" height="32" rx="8" fill="#0b1220"/>

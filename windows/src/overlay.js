@@ -110,7 +110,7 @@
 
   function drawText(width, height, usage, style) {
     const rows = window.LimitRingDisplay.limitRows(usage);
-    const panelWidth = Math.min(width - 20, 166);
+    const panelWidth = Math.min(width - 20, 172);
     const panelHeight = 55;
     const panelX = (width - panelWidth) / 2;
     const panelY = height - panelHeight - 8;
@@ -126,8 +126,8 @@
     context.stroke();
 
     const labelX = panelX + 18;
-    const percentX = panelX + 64;
-    const resetX = panelX + panelWidth - 10;
+    const percentX = panelX + panelWidth - 88;
+    const resetX = panelX + panelWidth - 12;
     rows.forEach((row, index) => {
       const y = panelY + 19 + index * 23;
       const color = row.role === "outer" ? style.outerColor : style.innerColor;
@@ -137,21 +137,20 @@
       roundRect(panelX + 9, y - 8, 3, 16, 2);
       context.fill();
 
-      context.font = "700 10px ui-monospace, Cascadia Code, Consolas, monospace";
+      context.font = "700 9.5px ui-monospace, Cascadia Code, Consolas, monospace";
       context.textAlign = "left";
       context.textBaseline = "middle";
       context.fillStyle = rgba(color, 0.98 * opacity);
       context.fillText(row.label, labelX, y);
 
-      context.font = "800 11px ui-monospace, Cascadia Code, Consolas, monospace";
+      context.font = "800 10px ui-monospace, Cascadia Code, Consolas, monospace";
       context.fillStyle = "rgba(255, 255, 255, 0.95)";
       context.fillText(row.percent, percentX, y);
 
-      context.font = "700 11px ui-monospace, Cascadia Code, Consolas, monospace";
+      context.font = "700 10px ui-monospace, Cascadia Code, Consolas, monospace";
       context.textAlign = "right";
       context.fillStyle = "rgba(255, 255, 255, 0.90)";
-      const reset = row.reset ? `left ${row.reset}` : "left";
-      context.fillText(reset, resetX, y);
+      context.fillText(row.reset || "", resetX, y);
     });
   }
 

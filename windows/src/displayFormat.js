@@ -30,10 +30,10 @@
     if (!bucket || typeof bucket.resetAt !== "number") {
       return "";
     }
-    const resetMs = bucket.resetAt > 100000000000 ? bucket.resetAt : bucket.resetAt * 1000;
+    const resetMs = bucket.resetAt > 10000000000 ? bucket.resetAt : bucket.resetAt * 1000;
     const remainingSeconds = Math.max(0, Math.round((resetMs - nowMs) / 1000));
     if (remainingSeconds <= 36 * 60 * 60) {
-      return `in ${formatDuration(remainingSeconds)}`;
+      return formatDuration(remainingSeconds);
     }
     const reset = new Date(resetMs);
     return `${WEEKDAYS[reset.getDay()]} ${reset.getHours()}:${String(reset.getMinutes()).padStart(2, "0")}`;

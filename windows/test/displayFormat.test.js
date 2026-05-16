@@ -16,7 +16,7 @@ test("formatWindowLabel uses compact time labels", () => {
 
 test("formatResetText renders short remaining time", () => {
   const now = Date.UTC(2026, 0, 1, 0, 0, 0);
-  assert.equal(formatResetText({ resetAt: (now + 63 * 60 * 1000) / 1000 }, now), "in 1:03");
+  assert.equal(formatResetText({ resetAt: (now + 63 * 60 * 1000) / 1000 }, now), "1:03");
   assert.equal(formatDuration(59 * 60), "59m");
 });
 
@@ -30,7 +30,7 @@ test("limitRows renders outer and inner rows", () => {
     now
   );
   assert.deepEqual(rows, [
-    { label: "4h", percent: "91%", reset: "in 1:03", role: "outer" },
+    { label: "4h", percent: "91%", reset: "1:03", role: "outer" },
     { label: "Week", percent: "82%", reset: "", role: "inner" }
   ]);
 });
