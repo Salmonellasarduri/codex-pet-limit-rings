@@ -48,9 +48,22 @@
     return fallback;
   }
 
-  function drawRing(centerX, centerY, radius, width, bucket, color, emptyColor, missingColor) {
+  function drawRing(centerX, centerY, radius, width, bucket, color, emptyColor, missingColor, edgeColor) {
+    const sweep = bucket ? (Math.PI * 2 * bucket.remainingPercent) / 100 : 0;
+    const startAngle = -Math.PI / 2;
+    const endAngle = startAngle + sweep;
+
     context.lineCap = "round";
-    context.lineWidth = width;
+    context.shadowBlur = 16;
+    context.shadowColor = color;
+    context.lineWidth = width + 9;
+    context.strokeStyle = emptyColor;
+    context.beginPath();
+    context.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    context.stroke();
+
+    context.shadowBlur = 0;
+    context.lineWidth = width + 4;
     context.strokeStyle = emptyColor;
     context.beginPath();
     context.arc(centerX, centerY, radius, 0, Math.PI * 2);
@@ -60,31 +73,104 @@
       context.setLineDash([3, 10]);
       context.strokeStyle = missingColor;
       context.beginPath();
-      context.arc(centerX, centerY, radius, -Math.PI / 2, Math.PI * 1.5);
+      context.arc(centerX, centerY, radius, startAngle, Math.PI * 1.5);
       context.stroke();
       context.setLineDash([]);
       return;
     }
 
-    const sweep = (Math.PI * 2 * bucket.remainingPercent) / 100;
+    context.shadowBlur = 10;
+    context.shadowColor = color;
+    context.lineWidth = width;
     context.strokeStyle = color;
     context.beginPath();
-    context.arc(centerX, centerY, radius, -Math.PI / 2, -Math.PI / 2 + sweep);
+    context.arc(centerX, centerY, radius, startAngle, endAngle);
     context.stroke();
+
+    context.shadowBlur = 0;
+    context.lineWidth = Math.max(1.5, width * 0.28);
+    context.strokeStyle = edgeColor;
+    context.beginPath();
+    context.arc(centerX, centerY, radius - width * 0.42, startAngle, endAngle);
+    context.stroke();
+
+    const marker = pointOnCircle(centerX, centerY, radius, endAngle);
+    context.fillStyle = edgeColor;
+    context.beginPath();
+    context.arc(marker.x, marker.y, Math.max(2.4, width * 0.45), 0, Math.PI * 2);
+    context.fill();
   }
 
-  function drawText(width, height, usage) {
-    const source = usage.source === "live" ? "Live" : usage.source === "log" ? "Cached" : "Waiting";
-    const primary = usage.primary ? `${Math.round(usage.primary.remainingPercent)}%` : "--";
-    const secondary = usage.secondary ? `${Math.round(usage.secondary.remainingPercent)}%` : "--";
-    context.font = "600 11px system-ui, Segoe UI, sans-serif";
+  function pointOnCircle(centerX, centerY, radius, angle) {
+    return {
+      x: centerX + Math.cos(angle) * radius,
+      y: centerY + Math.sin(angle) * radius
+    };
+  }
+
+  function drawText(width, height, usage, style) {
+    const rows = window.LimitRingDisplay.limitRows(usage);
+    const panelWidth = Math.min(width - 20, 166);
+    const panelHeight = 55;
+    const panelX = (width - panelWidth) / 2;
+    const panelY = height - panelHeight - 8;
+
+    context.shadowBlur = 14;
+    context.shadowColor = "rgba(0, 0, 0, 0.50)";
+    context.fillStyle = "rgba(24, 24, 26, 0.88)";
+    roundRect(panelX, panelY, panelWidth, panelHeight, 7);
+    context.fill();
+    context.shadowBlur = 0;
+    context.strokeStyle = "rgba(255, 255, 255, 0.10)";
+    context.lineWidth = 1;
+    context.stroke();
+
+    const labelX = panelX + 18;
+    const percentX = panelX + 64;
+    const resetX = panelX + panelWidth - 10;
+    rows.forEach((row, index) => {
+      const y = panelY + 19 + index * 23;
+      const color = row.role === "outer" ? style.outerColor : style.innerColor;
+      const opacity = row.role === "outer" ? style.outerOpacity : style.innerOpacity;
+
+      context.fillStyle = rgba(color, 0.95 * opacity);
+      roundRect(panelX + 9, y - 8, 3, 16, 2);
+      context.fill();
+
+      context.font = "700 10px ui-monospace, Cascadia Code, Consolas, monospace";
+      context.textAlign = "left";
+      context.textBaseline = "middle";
+      context.fillStyle = rgba(color, 0.98 * opacity);
+      context.fillText(row.label, labelX, y);
+
+      context.font = "800 11px ui-monospace, Cascadia Code, Consolas, monospace";
+      context.fillStyle = "rgba(255, 255, 255, 0.95)";
+      context.fillText(row.percent, percentX, y);
+
+      context.font = "700 11px ui-monospace, Cascadia Code, Consolas, monospace";
+      context.textAlign = "right";
+      context.fillStyle = "rgba(255, 255, 255, 0.90)";
+      const reset = row.reset ? `left ${row.reset}` : "left";
+      context.fillText(reset, resetX, y);
+    });
+  }
+
+  function drawSourceBadge(width, height, usage) {
+    const source = usage.source === "live" ? "Live" : usage.source === "log" ? "Cached" : "";
+    if (!source) {
+      return;
+    }
+    context.font = "700 9px ui-monospace, Cascadia Code, Consolas, monospace";
     context.textAlign = "center";
     context.textBaseline = "middle";
-    context.fillStyle = "rgba(8, 12, 20, 0.62)";
-    roundRect(width / 2 - 48, height - 35, 96, 24, 7);
+    const badgeWidth = 42;
+    const x = width / 2 - badgeWidth / 2;
+    const y = 7;
+    context.fillStyle = "rgba(24, 24, 26, 0.56)";
+    roundRect(x, y, badgeWidth, 17, 6);
     context.fill();
-    context.fillStyle = "rgba(255, 255, 255, 0.92)";
-    context.fillText(`${source} ${primary}/${secondary}`, width / 2, height - 23);
+    context.fillStyle = "rgba(255, 255, 255, 0.70)";
+    context.fillText(source, width / 2, y + 8.5);
   }
 
   function roundRect(x, y, width, height, radius) {
@@ -109,9 +195,9 @@
     phase += 0.012;
     const centerX = width / 2;
     const centerY = height / 2;
-    const outerRadius = Math.min(width, height) / 2 - 14;
-    const innerRadius = outerRadius - 14;
-    const breathe = 0.18 + Math.sin(phase) * 0.06;
+    const outerRadius = Math.min(width, height) / 2 - 24;
+    const innerRadius = outerRadius - 15;
+    const breathe = 0.22 + Math.sin(phase) * 0.05;
 
     const usage = snapshot.usage || {};
     const style = snapshot.style || {};
@@ -128,9 +214,10 @@
     context.arc(centerX, centerY, outerRadius + 9, 0, Math.PI * 2);
     context.fill();
 
-    drawRing(centerX, centerY, outerRadius, 8, usage.primary, colorFor(usage.primary, rgba(outerColor, 0.96 * outerOpacity), outerOpacity), rgba(outerColor, 0.16 * outerOpacity), rgba(outerColor, 0.3 * outerOpacity));
-    drawRing(centerX, centerY, innerRadius, 6, usage.secondary, colorFor(usage.secondary, rgba(innerColor, 0.92 * innerOpacity), innerOpacity), rgba(innerColor, 0.15 * innerOpacity), rgba(innerColor, 0.3 * innerOpacity));
-    drawText(width, height, usage);
+    drawRing(centerX, centerY, outerRadius, 7, usage.primary, colorFor(usage.primary, rgba(outerColor, 0.80 * outerOpacity), outerOpacity), rgba(outerColor, 0.23 * outerOpacity), rgba(outerColor, 0.34 * outerOpacity), rgba(outerColor, 0.95 * outerOpacity));
+    drawRing(centerX, centerY, innerRadius, 6, usage.secondary, colorFor(usage.secondary, rgba(innerColor, 0.78 * innerOpacity), innerOpacity), rgba(innerColor, 0.22 * innerOpacity), rgba(innerColor, 0.32 * innerOpacity), rgba(innerColor, 0.92 * innerOpacity));
+    drawText(width, height, usage, { outerColor, innerColor, outerOpacity, innerOpacity });
+    drawSourceBadge(width, height, usage);
 
     requestAnimationFrame(draw);
   }

@@ -13,7 +13,7 @@ const { defaultLogsPath, emptyLimitState, readLatestUsage } = require("./usage")
 const STATE_DEBOUNCE_MS = 35;
 const FRAME_POLL_MS = 2000;
 const USAGE_POLL_MS = 20000;
-const OVERLAY_PADDING = 38;
+const OVERLAY_PADDING = 58;
 
 class LimitRingsWindowsApp {
   constructor() {
