@@ -44,9 +44,6 @@ private let defaultAvatarColorKey = "__default__"
 private let liveUsageURL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
 private let codexBundleIdentifier = "com.openai.codex"
 private let codexAppBundleURL = URL(fileURLWithPath: "/Applications/Codex.app")
-private let codexQuickChatKeyCode: CGKeyCode = 0x2D
-private let codexQuickChatKeyFlags: CGEventFlags = [.maskAlternate, .maskShift]
-private let codexQuickChatActivationDelay: TimeInterval = 0.18
 private let codexQuickChatLaunchDelay: TimeInterval = 0.8
 private let codexQuickChatFollowupDelay: TimeInterval = 0.35
 private let codexSettingsURL = URL(string: "codex://settings")!
@@ -1582,12 +1579,12 @@ final class LimitRingsApp: NSObject {
 
     private func openCodexQuickChatIfNeeded(at mouse: CGPoint) {
         guard isPetActionTarget(at: mouse) else { return }
-        sendCodexQuickChatShortcutWhenReady()
+        openCodexQuickChatWhenReady()
     }
 
     private func openCodexSettingsIfNeeded(at mouse: CGPoint) {
         guard isPetActionTarget(at: mouse) else { return }
-        sendCodexQuickChatShortcutWhenReady { [weak self] in
+        openCodexQuickChatWhenReady { [weak self] in
             self?.openCodexSettings()
         }
     }
@@ -1603,12 +1600,10 @@ final class LimitRingsApp: NSObject {
         NSWorkspace.shared.open(codexSettingsURL)
     }
 
-    private func sendCodexQuickChatShortcutWhenReady(completion: (() -> Void)? = nil) {
+    private func openCodexQuickChatWhenReady(completion: (() -> Void)? = nil) {
         if let app = NSRunningApplication.runningApplications(withBundleIdentifier: codexBundleIdentifier).first {
             app.activate(options: [.activateAllWindows])
-            DispatchQueue.main.asyncAfter(deadline: .now() + codexQuickChatActivationDelay) { [weak self] in
-                self?.sendCodexQuickChatShortcut(to: app, completion: completion)
-            }
+            clickCodexQuickChatMenuItem(completion: completion)
             return
         }
 
@@ -1616,35 +1611,44 @@ final class LimitRingsApp: NSObject {
         NSWorkspace.shared.openApplication(at: codexAppBundleURL, configuration: configuration) { [weak self] app, _ in
             app?.activate(options: [.activateAllWindows])
             DispatchQueue.main.asyncAfter(deadline: .now() + codexQuickChatLaunchDelay) {
-                if let app {
-                    self?.sendCodexQuickChatShortcut(to: app, completion: completion)
-                }
+                self?.clickCodexQuickChatMenuItem(completion: completion)
             }
         }
     }
 
-    private func sendCodexQuickChatShortcut(to app: NSRunningApplication, completion: (() -> Void)? = nil) {
-        guard accessibilityTrustedForShortcut() else {
+    private func clickCodexQuickChatMenuItem(completion: (() -> Void)? = nil) {
+        guard accessibilityTrustedForMenuClick() else {
             NSSound.beep()
             return
         }
 
-        guard let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: codexQuickChatKeyCode, keyDown: true),
-              let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: codexQuickChatKeyCode, keyDown: false) else {
+        let source = """
+        tell application "Codex" to activate
+        tell application "System Events"
+            tell process "Codex"
+                set frontmost to true
+                click menu item "Quick Chat" of menu 1 of menu bar item "File" of menu bar 1
+            end tell
+        end tell
+        """
+
+        guard let script = NSAppleScript(source: source) else {
             NSSound.beep()
             return
         }
 
-        keyDown.flags = codexQuickChatKeyFlags
-        keyUp.flags = codexQuickChatKeyFlags
-        keyDown.postToPid(app.processIdentifier)
-        keyUp.postToPid(app.processIdentifier)
+        var error: NSDictionary?
+        script.executeAndReturnError(&error)
+        guard error == nil else {
+            NSSound.beep()
+            return
+        }
 
         guard let completion else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + codexQuickChatFollowupDelay, execute: completion)
     }
 
-    private func accessibilityTrustedForShortcut() -> Bool {
+    private func accessibilityTrustedForMenuClick() -> Bool {
         let promptKey = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
         let options = [promptKey: true] as CFDictionary
         return AXIsProcessTrustedWithOptions(options)

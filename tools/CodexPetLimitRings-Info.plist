@@ -19,5 +19,7 @@
   <true/>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>Codex Pet Limit Rings uses Apple Events to run Codex menu commands for pet click actions.</string>
 </dict>
 </plist>
