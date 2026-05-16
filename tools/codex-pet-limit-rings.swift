@@ -27,6 +27,8 @@ struct LimitState {
 private let limitStatePollInterval: TimeInterval = 20.0
 private let petFrameFallbackPollInterval: TimeInterval = 2.0
 private let petFrameStateDebounceInterval: TimeInterval = 0.035
+private let ringPanelPadding: CGFloat = 38.0
+private let readoutBottomExtension: CGFloat = 44.0
 private let ringsVisibleDefaultsKey = "CodexPetLimitRings.ringsVisible"
 private let ringColorPresetDefaultsPrefix = "CodexPetLimitRings.colorPreset."
 private let outerRingColorPresetDefaultsPrefix = "CodexPetLimitRings.outerColorPreset."
@@ -39,6 +41,8 @@ private let defaultRingColorPresetID = "default"
 private let defaultRingOpacityPresetID = "100"
 private let defaultAvatarColorKey = "__default__"
 private let liveUsageURL = URL(string: "https://chatgpt.com/backend-api/wham/usage")!
+private let codexNewThreadURL = URL(string: "codex://threads/new")!
+private let codexSettingsURL = URL(string: "codex://settings")!
 
 struct RingColorPalette {
     var primary: NSColor
@@ -445,6 +449,7 @@ struct LimitRingRenderer {
     var showsReadout: Bool = false
     var colorPalette: RingColorPalette = .default
     var opacitySettings: RingOpacitySettings = .default
+    var ringCenter: CGPoint? = nil
 
     func draw(in rect: CGRect) {
         guard let context = NSGraphicsContext.current?.cgContext else { return }
@@ -452,7 +457,7 @@ struct LimitRingRenderer {
         context.setShouldAntialias(true)
         context.clear(rect)
 
-        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let center = ringCenter ?? CGPoint(x: rect.midX, y: rect.midY)
         let minSide = min(rect.width, rect.height)
         let urgency = max(urgency(for: state.primary), urgency(for: state.secondary))
         let breathe = CGFloat((sin(phase * 2.0 * .pi) + 1.0) * 0.5)
@@ -883,11 +888,21 @@ final class LimitRingView: NSView {
     var opacitySettings: RingOpacitySettings = .default {
         didSet { needsDisplay = true }
     }
+    var ringCenter: CGPoint? {
+        didSet { needsDisplay = true }
+    }
 
     override var isOpaque: Bool { false }
 
     override func draw(_ dirtyRect: NSRect) {
-        LimitRingRenderer(state: state, phase: phase, showsReadout: showsReadout, colorPalette: colorPalette, opacitySettings: opacitySettings).draw(in: bounds)
+        LimitRingRenderer(
+            state: state,
+            phase: phase,
+            showsReadout: showsReadout,
+            colorPalette: colorPalette,
+            opacitySettings: opacitySettings,
+            ringCenter: ringCenter
+        ).draw(in: bounds)
     }
 }
 
@@ -916,6 +931,7 @@ final class LimitRingsApp: NSObject {
     private var frameTimer: Timer?
     private var animationTimer: Timer?
     private var mouseDownMonitor: Any?
+    private var rightMouseDownMonitor: Any?
     private var mouseDragMonitor: Any?
     private var mouseUpMonitor: Any?
     private var mouseMoveMonitor: Any?
@@ -964,7 +980,7 @@ final class LimitRingsApp: NSObject {
         pendingGlobalStateWatcherRestart?.cancel()
         pendingFrameUpdate?.cancel()
         globalStateSource?.cancel()
-        [mouseDownMonitor, mouseDragMonitor, mouseUpMonitor, mouseMoveMonitor].compactMap { $0 }.forEach {
+        [mouseDownMonitor, rightMouseDownMonitor, mouseDragMonitor, mouseUpMonitor, mouseMoveMonitor].compactMap { $0 }.forEach {
             NSEvent.removeMonitor($0)
         }
     }
@@ -1072,6 +1088,7 @@ final class LimitRingsApp: NSObject {
             currentPetFrameAppKit = nil
             updateCurrentAvatarID(nil)
             dragCenterOffset = nil
+            ringView.ringCenter = nil
             ringView.showsReadout = false
             panel.orderOut(nil)
             return
@@ -1086,12 +1103,13 @@ final class LimitRingsApp: NSObject {
     }
 
     private func setPanelFrame(forPetFrameTopLeft petFrame: CGRect) {
-        let padding: CGFloat = 38
-        let size = max(petFrame.width, petFrame.height) + padding * 2
-        let topLeft = CGPoint(x: petFrame.midX - size / 2, y: petFrame.midY - size / 2)
-        let origin = appKitOriginFromTopLeft(topLeft, size: CGSize(width: size, height: size))
+        let ringSize = max(petFrame.width, petFrame.height) + ringPanelPadding * 2
+        let panelSize = CGSize(width: ringSize, height: ringSize + readoutBottomExtension)
+        let topLeft = CGPoint(x: petFrame.midX - ringSize / 2, y: petFrame.midY - ringSize / 2)
+        let origin = appKitOriginFromTopLeft(topLeft, size: panelSize)
 
-        panel.setFrame(CGRect(origin: origin, size: CGSize(width: size, height: size)), display: true)
+        ringView.ringCenter = CGPoint(x: panelSize.width / 2, y: ringSize / 2 + readoutBottomExtension)
+        panel.setFrame(CGRect(origin: origin, size: panelSize), display: true)
     }
 
     private func installStatusMenu() {
@@ -1519,9 +1537,14 @@ final class LimitRingsApp: NSObject {
     }
 
     private func installDragFollow() {
-        mouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] _ in
+        mouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
             DispatchQueue.main.async {
-                self?.beginDragFollowIfNeeded(at: NSEvent.mouseLocation)
+                self?.handleLeftMouseDown(event)
+            }
+        }
+        rightMouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.rightMouseDown]) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.openCodexSettingsIfNeeded(at: NSEvent.mouseLocation)
             }
         }
         mouseDragMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDragged]) { [weak self] _ in
@@ -1541,6 +1564,50 @@ final class LimitRingsApp: NSObject {
         }
     }
 
+    private func handleLeftMouseDown(_ event: NSEvent) {
+        if event.clickCount == 2 {
+            openProjectlessCodexThreadIfNeeded(at: NSEvent.mouseLocation)
+            return
+        }
+
+        beginDragFollowIfNeeded(at: NSEvent.mouseLocation)
+    }
+
+    private func openProjectlessCodexThreadIfNeeded(at mouse: CGPoint) {
+        guard isPetActionTarget(at: mouse) else { return }
+        clearActiveWorkspaceRoots()
+        NSWorkspace.shared.open(codexNewThreadURL)
+    }
+
+    private func openCodexSettingsIfNeeded(at mouse: CGPoint) {
+        guard isPetActionTarget(at: mouse) else { return }
+        NSWorkspace.shared.open(codexSettingsURL)
+    }
+
+    private func isPetActionTarget(at mouse: CGPoint) -> Bool {
+        guard ringsVisible else { return false }
+        updateFrame()
+        guard currentPetFrameAppKit != nil else { return false }
+        return isHoveringRingOrPet(mouse)
+    }
+
+    private func clearActiveWorkspaceRoots() {
+        guard let data = try? Data(contentsOf: config.globalStatePath),
+              var payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let activeRoots = payload["active-workspace-roots"] as? [Any],
+              !activeRoots.isEmpty else {
+            return
+        }
+
+        payload["active-workspace-roots"] = []
+        guard JSONSerialization.isValidJSONObject(payload),
+              let output = try? JSONSerialization.data(withJSONObject: payload) else {
+            return
+        }
+
+        try? output.write(to: config.globalStatePath, options: [.atomic])
+    }
+
     private func beginDragFollowIfNeeded(at mouse: CGPoint) {
         guard ringsVisible else { return }
         updateFrame()
@@ -1548,7 +1615,9 @@ final class LimitRingsApp: NSObject {
         let hitTarget = currentPetFrameAppKit.insetBy(dx: -24, dy: -24)
         guard hitTarget.contains(mouse) else { return }
 
-        dragCenterOffset = CGPoint(x: panel.frame.midX - mouse.x, y: panel.frame.midY - mouse.y)
+        let ringCenter = ringCenterInPanel()
+        let ringCenterOnScreen = CGPoint(x: panel.frame.minX + ringCenter.x, y: panel.frame.minY + ringCenter.y)
+        dragCenterOffset = CGPoint(x: ringCenterOnScreen.x - mouse.x, y: ringCenterOnScreen.y - mouse.y)
         holdDraggedFrameUntil = nil
     }
 
@@ -1556,7 +1625,8 @@ final class LimitRingsApp: NSObject {
         guard let offset = dragCenterOffset else { return }
         let size = panel.frame.size
         let center = CGPoint(x: mouse.x + offset.x, y: mouse.y + offset.y)
-        let origin = CGPoint(x: center.x - size.width / 2, y: center.y - size.height / 2)
+        let ringCenter = ringCenterInPanel()
+        let origin = CGPoint(x: center.x - ringCenter.x, y: center.y - ringCenter.y)
         panel.setFrame(CGRect(origin: origin, size: size), display: true)
         ringView.showsReadout = false
     }
@@ -1591,10 +1661,14 @@ final class LimitRingsApp: NSObject {
         }
 
         let local = CGPoint(x: mouse.x - frame.minX, y: mouse.y - frame.minY)
-        let center = CGPoint(x: frame.width / 2, y: frame.height / 2)
+        let center = ringCenterInPanel()
         let distance = hypot(local.x - center.x, local.y - center.y)
         let radius = min(frame.width, frame.height) * 0.5 - 16.0
         return distance >= radius - 24.0 && distance <= radius + 19.0
+    }
+
+    private func ringCenterInPanel() -> CGPoint {
+        ringView.ringCenter ?? CGPoint(x: panel.frame.width / 2, y: panel.frame.height / 2)
     }
 
     private func appKitOriginFromTopLeft(_ topLeft: CGPoint, size: CGSize) -> CGPoint {
