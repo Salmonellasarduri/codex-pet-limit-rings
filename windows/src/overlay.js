@@ -1,6 +1,7 @@
 (function () {
   const canvas = document.getElementById("rings");
   const context = canvas.getContext("2d");
+  const USAGE_PANEL_WIDTH = 164;
   let snapshot = {
     usage: { primary: null, secondary: null, source: "none" },
     style: {
@@ -49,13 +50,14 @@
   }
 
   function drawRing(centerX, centerY, radius, width, bucket, color, emptyColor, missingColor, edgeColor) {
-    const sweep = bucket ? (Math.PI * 2 * bucket.remainingPercent) / 100 : 0;
+    const fullCircle = Math.PI * 2;
+    const sweep = bucket ? (fullCircle * bucket.remainingPercent) / 100 : 0;
     const startAngle = -Math.PI / 2;
-    const endAngle = startAngle + sweep;
+    const remainingStartAngle = startAngle + fullCircle - sweep;
+    const remainingEndAngle = startAngle + fullCircle;
 
     context.lineCap = "round";
-    context.shadowBlur = 16;
-    context.shadowColor = color;
+    context.shadowBlur = 0;
     context.lineWidth = width + 9;
     context.strokeStyle = emptyColor;
     context.beginPath();
@@ -84,17 +86,17 @@
     context.lineWidth = width;
     context.strokeStyle = color;
     context.beginPath();
-    context.arc(centerX, centerY, radius, startAngle, endAngle);
+    context.arc(centerX, centerY, radius, remainingStartAngle, remainingEndAngle);
     context.stroke();
 
     context.shadowBlur = 0;
     context.lineWidth = Math.max(1.5, width * 0.28);
     context.strokeStyle = edgeColor;
     context.beginPath();
-    context.arc(centerX, centerY, radius - width * 0.42, startAngle, endAngle);
+    context.arc(centerX, centerY, radius - width * 0.42, remainingStartAngle, remainingEndAngle);
     context.stroke();
 
-    const marker = pointOnCircle(centerX, centerY, radius, endAngle);
+    const marker = pointOnCircle(centerX, centerY, radius, remainingStartAngle);
     context.fillStyle = edgeColor;
     context.beginPath();
     context.arc(marker.x, marker.y, Math.max(2.4, width * 0.45), 0, Math.PI * 2);
@@ -108,12 +110,22 @@
     };
   }
 
+  function ringGeometry(width, height) {
+    const ringSize = Math.max(1, Math.min(width - USAGE_PANEL_WIDTH, height));
+    const ringLeft = width - ringSize;
+    return {
+      size: ringSize,
+      centerX: ringLeft + ringSize / 2,
+      centerY: height / 2
+    };
+  }
+
   function drawText(width, height, usage, style) {
     const rows = window.LimitRingDisplay.limitRows(usage);
-    const panelWidth = Math.min(width - 20, 172);
-    const panelHeight = 55;
-    const panelX = (width - panelWidth) / 2;
-    const panelY = height - panelHeight - 8;
+    const panelWidth = Math.min(USAGE_PANEL_WIDTH - 12, 152);
+    const panelHeight = 52;
+    const panelX = 36;
+    const panelY = 8;
 
     context.shadowBlur = 14;
     context.shadowColor = "rgba(0, 0, 0, 0.50)";
@@ -126,10 +138,10 @@
     context.stroke();
 
     const labelX = panelX + 18;
-    const percentX = panelX + panelWidth - 88;
-    const resetX = panelX + panelWidth - 12;
+    const percentX = panelX + panelWidth - 96;
+    const resetX = panelX + panelWidth - 10;
     rows.forEach((row, index) => {
-      const y = panelY + 19 + index * 23;
+      const y = panelY + 18 + index * 22;
       const color = row.role === "outer" ? style.outerColor : style.innerColor;
       const opacity = row.role === "outer" ? style.outerOpacity : style.innerOpacity;
 
@@ -154,7 +166,7 @@
     });
   }
 
-  function drawSourceBadge(width, height, usage) {
+  function drawSourceBadge(width, height, usage, centerX) {
     const source = usage.source === "live" ? "Live" : usage.source === "log" ? "Cached" : "";
     if (!source) {
       return;
@@ -163,13 +175,13 @@
     context.textAlign = "center";
     context.textBaseline = "middle";
     const badgeWidth = 42;
-    const x = width / 2 - badgeWidth / 2;
+    const x = centerX - badgeWidth / 2;
     const y = 7;
     context.fillStyle = "rgba(24, 24, 26, 0.56)";
     roundRect(x, y, badgeWidth, 17, 6);
     context.fill();
     context.fillStyle = "rgba(255, 255, 255, 0.70)";
-    context.fillText(source, width / 2, y + 8.5);
+    context.fillText(source, centerX, y + 8.5);
   }
 
   function roundRect(x, y, width, height, radius) {
@@ -192,9 +204,10 @@
     }
 
     phase += 0.012;
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const outerRadius = Math.min(width, height) / 2 - 24;
+    const ring = ringGeometry(width, height);
+    const centerX = ring.centerX;
+    const centerY = ring.centerY;
+    const outerRadius = ring.size / 2 - 24;
     const innerRadius = outerRadius - 15;
     const breathe = 0.22 + Math.sin(phase) * 0.05;
 
@@ -213,10 +226,10 @@
     context.arc(centerX, centerY, outerRadius + 9, 0, Math.PI * 2);
     context.fill();
 
-    drawRing(centerX, centerY, outerRadius, 7, usage.primary, colorFor(usage.primary, rgba(outerColor, 0.80 * outerOpacity), outerOpacity), rgba(outerColor, 0.23 * outerOpacity), rgba(outerColor, 0.34 * outerOpacity), rgba(outerColor, 0.95 * outerOpacity));
-    drawRing(centerX, centerY, innerRadius, 6, usage.secondary, colorFor(usage.secondary, rgba(innerColor, 0.78 * innerOpacity), innerOpacity), rgba(innerColor, 0.22 * innerOpacity), rgba(innerColor, 0.32 * innerOpacity), rgba(innerColor, 0.92 * innerOpacity));
+    drawRing(centerX, centerY, outerRadius, 7, usage.primary, colorFor(usage.primary, rgba(outerColor, 0.80 * outerOpacity), outerOpacity), rgba(outerColor, 0.08 * outerOpacity), rgba(outerColor, 0.18 * outerOpacity), rgba(outerColor, 0.95 * outerOpacity));
+    drawRing(centerX, centerY, innerRadius, 6, usage.secondary, colorFor(usage.secondary, rgba(innerColor, 0.78 * innerOpacity), innerOpacity), rgba(innerColor, 0.075 * innerOpacity), rgba(innerColor, 0.17 * innerOpacity), rgba(innerColor, 0.92 * innerOpacity));
     drawText(width, height, usage, { outerColor, innerColor, outerOpacity, innerOpacity });
-    drawSourceBadge(width, height, usage);
+    drawSourceBadge(width, height, usage, centerX);
 
     requestAnimationFrame(draw);
   }

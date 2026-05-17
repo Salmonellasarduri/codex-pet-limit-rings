@@ -14,6 +14,7 @@ const STATE_DEBOUNCE_MS = 35;
 const FRAME_POLL_MS = 2000;
 const USAGE_POLL_MS = 20000;
 const OVERLAY_PADDING = 58;
+const USAGE_PANEL_WIDTH = 164;
 const APP_ICON_PATH = path.join(__dirname, "..", "assets", "spellbook-icon.png");
 
 class LimitRingsWindowsApp {
@@ -71,7 +72,7 @@ class LimitRingsWindowsApp {
       }
     });
     this.overlay.setIgnoreMouseEvents(true, { forward: true });
-    this.overlay.setAlwaysOnTop(true, "screen-saver");
+    this.overlay.setAlwaysOnTop(true, "floating");
     this.overlay.on("close", (event) => {
       if (!isQuitting) {
         event.preventDefault();
@@ -350,9 +351,9 @@ class LimitRingsWindowsApp {
 function panelBoundsForPet(petFrame) {
   const size = Math.ceil(Math.max(petFrame.width, petFrame.height) + OVERLAY_PADDING * 2);
   return {
-    x: Math.round(petFrame.x + petFrame.width / 2 - size / 2),
+    x: Math.round(petFrame.x + petFrame.width / 2 - size / 2 - USAGE_PANEL_WIDTH),
     y: Math.round(petFrame.y + petFrame.height / 2 - size / 2),
-    width: size,
+    width: size + USAGE_PANEL_WIDTH,
     height: size
   };
 }
