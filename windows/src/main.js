@@ -379,38 +379,50 @@ function createTrayIcon() {
 let ringsApp;
 let isQuitting = false;
 
-app.whenReady().then(async () => {
-  if (process.argv.includes("--smoke")) {
-    const codexHome = getDefaultCodexHome();
-    const statePath = path.join(codexHome, ".codex-global-state.json");
-    let stateReadable = false;
-    let petOpen = false;
-    let hasPetFrame = false;
-    try {
-      const state = readCodexState(statePath);
-      stateReadable = true;
-      petOpen = state.open;
-      hasPetFrame = Boolean(state.petFrame);
-    } catch {
-      stateReadable = false;
-    }
-    console.log(
-      JSON.stringify({
-        codexHome,
-        stateReadable,
-        petOpen,
-        hasPetFrame,
-        authExists: fs.existsSync(path.join(codexHome, "auth.json")),
-        logsExists: fs.existsSync(defaultLogsPath(codexHome))
-      })
-    );
-    app.quit();
-    return;
+async function runSmokeCheck() {
+  const codexHome = getDefaultCodexHome();
+  const statePath = path.join(codexHome, ".codex-global-state.json");
+  let stateReadable = false;
+  let petOpen = false;
+  let hasPetFrame = false;
+  try {
+    const state = readCodexState(statePath);
+    stateReadable = true;
+    petOpen = state.open;
+    hasPetFrame = Boolean(state.petFrame);
+  } catch {
+    stateReadable = false;
   }
+  console.log(
+    JSON.stringify({
+      codexHome,
+      stateReadable,
+      petOpen,
+      hasPetFrame,
+      authExists: fs.existsSync(path.join(codexHome, "auth.json")),
+      logsExists: fs.existsSync(defaultLogsPath(codexHome))
+    })
+  );
+  app.quit();
+}
 
-  ringsApp = new LimitRingsWindowsApp();
-  await ringsApp.run();
-});
+if (process.argv.includes("--smoke")) {
+  app.whenReady().then(runSmokeCheck);
+} else if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (ringsApp) {
+      ringsApp.updateFrame();
+      ringsApp.updateTrayMenu();
+    }
+  });
+
+  app.whenReady().then(async () => {
+    ringsApp = new LimitRingsWindowsApp();
+    await ringsApp.run();
+  });
+}
 
 app.on("before-quit", () => {
   isQuitting = true;

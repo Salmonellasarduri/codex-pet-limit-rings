@@ -54,6 +54,34 @@ tools/run-limit-rings.sh
 
 The repository also includes a Windows MVP under `windows/`. It uses the same local Codex data contract as the macOS app, but renders the rings with an Electron transparent click-through overlay and a Windows tray icon.
 
+Start it from the repository root:
+
+```powershell
+.\tools\start-limit-rings.ps1
+```
+
+For a background launch:
+
+```powershell
+.\tools\start-limit-rings.ps1 -Detached
+```
+
+To start it automatically when Windows signs in:
+
+```powershell
+.\tools\install-limit-rings-windows.ps1
+```
+
+The Windows installer verifies dependencies up front, then adds a Startup folder shortcut that runs `npm start` in `windows/`. It does not patch Codex and it does not run `npm install` silently at sign-in. To remove the shortcut:
+
+```powershell
+.\tools\uninstall-limit-rings-windows.ps1
+```
+
+Once the companion is running, use any Codex pet normally. The rings watch `%USERPROFILE%\.codex\.codex-global-state.json`, stay hidden while the pet is closed, and appear again when Codex opens the pet and writes its bounds.
+
+You can still run the app directly during development:
+
 ```powershell
 cd windows
 npm install
@@ -66,7 +94,7 @@ Run the Windows parser and fallback checks:
 npm test
 ```
 
-The Windows version currently supports show/hide, ring color and opacity menus, custom colors, refresh, quit, pet-position following, live usage reads, and cached SQLite fallback. Launch-at-login packaging is intentionally left for a later pass.
+The Windows version currently supports show/hide, ring color and opacity menus, custom colors, refresh, quit, pet-position following, live usage reads, cached SQLite fallback, single-instance startup, and optional launch-at-login through a Startup folder shortcut.
 
 ## Managing The App
 
@@ -126,6 +154,9 @@ tools/
   run-limit-rings.sh               development launch
   build-limit-rings.sh             app bundle builder
   install-codex-skill.sh           copy the bundled skill into ~/.codex/skills
+  start-limit-rings.ps1            simple Windows launch path
+  install-limit-rings-windows.ps1  add the Windows companion to startup
+  uninstall-limit-rings-windows.ps1 remove the Windows startup shortcut
 
 windows/
   src/                              Windows Electron companion app
