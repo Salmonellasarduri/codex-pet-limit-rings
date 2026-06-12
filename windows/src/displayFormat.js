@@ -49,6 +49,55 @@
     return `${minutes}m`;
   }
 
+  function formatAge(ageMs) {
+    if (typeof ageMs !== "number" || !Number.isFinite(ageMs) || ageMs < 0) {
+      return "";
+    }
+    const minutes = Math.floor(ageMs / 60000);
+    if (minutes < 1) {
+      return "now";
+    }
+    if (minutes < 60) {
+      return `${minutes}m ago`;
+    }
+    return `${Math.floor(minutes / 60)}h ago`;
+  }
+
+  function claudeBarRows(claude, nowMs = Date.now()) {
+    const limits = (claude && claude.limits) || {};
+    return [
+      {
+        label: formatWindowLabel(limits.primary, "5h"),
+        percent: formatPercent(limits.primary),
+        reset: formatResetText(limits.primary, nowMs),
+        remainingPercent: limits.primary ? limits.primary.remainingPercent : null,
+        role: "outer"
+      },
+      {
+        label: formatWindowLabel(limits.secondary, "Week"),
+        percent: formatPercent(limits.secondary),
+        reset: formatResetText(limits.secondary, nowMs),
+        remainingPercent: limits.secondary ? limits.secondary.remainingPercent : null,
+        role: "inner"
+      }
+    ];
+  }
+
+  function claudeSessionLine(claude) {
+    const session = claude && claude.session;
+    if (!session) {
+      return "";
+    }
+    const parts = [];
+    if (session.model) {
+      parts.push(session.model);
+    }
+    if (typeof session.contextUsedPercent === "number") {
+      parts.push(`ctx ${Math.round(session.contextUsedPercent)}%`);
+    }
+    return parts.join(" · ");
+  }
+
   function limitRows(usage, nowMs = Date.now()) {
     const primary = usage && usage.primary;
     const secondary = usage && usage.secondary;
@@ -69,6 +118,9 @@
   }
 
   return {
+    claudeBarRows,
+    claudeSessionLine,
+    formatAge,
     formatDuration,
     formatResetText,
     formatWindowLabel,

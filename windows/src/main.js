@@ -9,8 +9,10 @@ const {
   resolvedRingStyle
 } = require("./settings");
 const { defaultLogsPath, emptyLimitState, readLatestUsage } = require("./usage");
+const claudeUsage = require("./claudeUsage");
 
 const STATE_DEBOUNCE_MS = 35;
+const CLAUDE_STATE_DEBOUNCE_MS = 400;
 const FRAME_POLL_MS = 2000;
 const USAGE_POLL_MS = 20000;
 const OVERLAY_PADDING = 58;
@@ -23,6 +25,9 @@ class LimitRingsWindowsApp {
     this.statePath = path.join(this.codexHome, ".codex-global-state.json");
     this.authPath = path.join(this.codexHome, "auth.json");
     this.logsPath = defaultLogsPath(this.codexHome);
+    this.claudeHome = claudeUsage.getDefaultClaudeHome();
+    this.claudeAuthPath = path.join(this.claudeHome, ".credentials.json");
+    this.claudeStatePath = claudeUsage.defaultStatePath(this.claudeHome);
     this.settingsStore = new RingSettingsStore(path.join(app.getPath("userData"), "settings.json"));
     this.overlay = null;
     this.colorPicker = null;
@@ -33,6 +38,10 @@ class LimitRingsWindowsApp {
     this.pendingFrameUpdate = null;
     this.ringsVisible = true;
     this.usage = emptyLimitState();
+    this.claudeWatcher = null;
+    this.pendingClaudeUpdate = null;
+    this.claudeVisible = true;
+    this.claude = claudeUsage.emptyClaudeState();
     this.lastBounds = null;
     this.currentAvatarID = null;
   }
@@ -43,9 +52,14 @@ class LimitRingsWindowsApp {
     this.installColorPickerHandlers();
     this.updateFrame();
     await this.updateUsage();
+    await this.updateClaude();
     this.installStateWatcher();
+    this.installClaudeWatcher();
     this.framePoll = setInterval(() => this.updateFrame(), FRAME_POLL_MS);
-    this.usagePoll = setInterval(() => this.updateUsage(), USAGE_POLL_MS);
+    this.usagePoll = setInterval(() => {
+      this.updateUsage();
+      this.updateClaude();
+    }, USAGE_POLL_MS);
   }
 
   async createOverlay() {
@@ -92,9 +106,14 @@ class LimitRingsWindowsApp {
     const source = this.usage.source === "live" ? "Live" : this.usage.source === "log" ? "Cached" : "Waiting";
     const primary = this.usage.primary ? `${Math.round(this.usage.primary.remainingPercent)}% short` : "short --";
     const secondary = this.usage.secondary ? `${Math.round(this.usage.secondary.remainingPercent)}% weekly` : "weekly --";
+    const claudeLimits = this.claude.limits || {};
+    const claudeSource = claudeLimits.source === "live" ? "Live" : claudeLimits.source === "statusline" ? "Statusline" : "Waiting";
+    const claudePrimary = claudeLimits.primary ? `${Math.round(claudeLimits.primary.remainingPercent)}% 5h` : "5h --";
+    const claudeSecondary = claudeLimits.secondary ? `${Math.round(claudeLimits.secondary.remainingPercent)}% weekly` : "weekly --";
     const settings = this.currentSettings();
     const menu = Menu.buildFromTemplate([
-      { label: `${source}: ${primary}, ${secondary}`, enabled: false },
+      { label: `Codex ${source}: ${primary}, ${secondary}`, enabled: false },
+      { label: `Claude ${claudeSource}: ${claudePrimary}, ${claudeSecondary}`, enabled: false },
       { type: "separator" },
       {
         label: "Show Rings",
@@ -103,6 +122,15 @@ class LimitRingsWindowsApp {
         click: (item) => {
           this.ringsVisible = item.checked;
           this.updateFrame();
+        }
+      },
+      {
+        label: "Show Claude Bars",
+        type: "checkbox",
+        checked: this.claudeVisible,
+        click: (item) => {
+          this.claudeVisible = item.checked;
+          this.sendSnapshot(Boolean(this.overlay && this.overlay.isVisible()));
         }
       },
       {
@@ -144,6 +172,7 @@ class LimitRingsWindowsApp {
         label: "Refresh Now",
         click: () => {
           this.updateUsage();
+          this.updateClaude();
           this.updateFrame();
         }
       },
@@ -225,6 +254,44 @@ class LimitRingsWindowsApp {
     }, STATE_DEBOUNCE_MS);
   }
 
+  installClaudeWatcher() {
+    if (this.claudeWatcher) {
+      this.claudeWatcher.close();
+      this.claudeWatcher = null;
+    }
+
+    try {
+      this.claudeWatcher = fs.watch(path.dirname(this.claudeStatePath), (eventType, fileName) => {
+        if (fileName && path.basename(fileName.toString()) === path.basename(this.claudeStatePath)) {
+          this.scheduleClaudeUpdate();
+        }
+      });
+      this.claudeWatcher.on("error", () => {
+        this.claudeWatcher = null;
+      });
+    } catch {
+      this.claudeWatcher = null;
+    }
+  }
+
+  scheduleClaudeUpdate() {
+    clearTimeout(this.pendingClaudeUpdate);
+    this.pendingClaudeUpdate = setTimeout(() => {
+      this.pendingClaudeUpdate = null;
+      this.updateClaude();
+    }, CLAUDE_STATE_DEBOUNCE_MS);
+  }
+
+  async updateClaude() {
+    this.claude = await claudeUsage.readLatestUsage({
+      claudeHome: this.claudeHome,
+      authPath: this.claudeAuthPath,
+      statePath: this.claudeStatePath
+    });
+    this.updateTrayMenu();
+    this.sendSnapshot(Boolean(this.overlay && this.overlay.isVisible()));
+  }
+
   updateFrame() {
     let codexState;
     try {
@@ -273,6 +340,7 @@ class LimitRingsWindowsApp {
     this.overlay.webContents.send("limit-rings:snapshot", {
       visible,
       usage: this.usage,
+      claude: this.claudeVisible ? this.claude : null,
       style: resolvedRingStyle(this.currentSettings())
     });
   }
@@ -339,8 +407,12 @@ class LimitRingsWindowsApp {
     clearInterval(this.framePoll);
     clearInterval(this.usagePoll);
     clearTimeout(this.pendingFrameUpdate);
+    clearTimeout(this.pendingClaudeUpdate);
     if (this.stateWatcher) {
       this.stateWatcher.close();
+    }
+    if (this.claudeWatcher) {
+      this.claudeWatcher.close();
     }
     if (this.colorPicker && !this.colorPicker.isDestroyed()) {
       this.colorPicker.close();
@@ -393,6 +465,8 @@ async function runSmokeCheck() {
   } catch {
     stateReadable = false;
   }
+  const claudeHome = claudeUsage.getDefaultClaudeHome();
+  const claude = await claudeUsage.readLatestUsage({ claudeHome });
   console.log(
     JSON.stringify({
       codexHome,
@@ -400,7 +474,14 @@ async function runSmokeCheck() {
       petOpen,
       hasPetFrame,
       authExists: fs.existsSync(path.join(codexHome, "auth.json")),
-      logsExists: fs.existsSync(defaultLogsPath(codexHome))
+      logsExists: fs.existsSync(defaultLogsPath(codexHome)),
+      claudeHome,
+      claudeAuthExists: fs.existsSync(path.join(claudeHome, ".credentials.json")),
+      claudeStateExists: fs.existsSync(claudeUsage.defaultStatePath(claudeHome)),
+      claudeLimitsSource: claude.limits.source,
+      claudeFiveHourRemaining: claude.limits.primary ? claude.limits.primary.remainingPercent : null,
+      claudeWeeklyRemaining: claude.limits.secondary ? claude.limits.secondary.remainingPercent : null,
+      claudeSessionModel: claude.session ? claude.session.model : null
     })
   );
   app.quit();

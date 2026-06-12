@@ -4,6 +4,8 @@ This is a Windows companion app for Codex pets. It keeps the same boundary as th
 
 The app reads local Codex state from `%USERPROFILE%\.codex`, follows the current Codex pet with a transparent click-through overlay, and draws usage-limit rings around it.
 
+It can also show Claude Code limits next to the same pet: Codex stays on the rings, Claude gets a compact two-bar panel (5h window and weekly) below the Codex readout, plus the active session's model and context usage.
+
 ## Run
 
 From the repository root, use the simple launcher:
@@ -47,6 +49,38 @@ The tray menu also includes:
 - `Ring Colors` for separate outer and inner ring presets or custom colors.
 - `Ring Opacity` for separate outer and inner opacity presets.
 - `Reset This Pet` to clear saved color and opacity settings for the current Codex pet.
+- `Show Claude Bars` to toggle the Claude limits panel.
+
+## Claude Data
+
+Claude limits come from two sources, live first, local fallback second (same policy as Codex):
+
+- Live: `https://api.anthropic.com/api/oauth/usage` with the local OAuth token from `%USERPROFILE%\.claude\.credentials.json` (read-only; the app never refreshes or rewrites the token, and skips the call when the token is expired).
+- Fallback: `%USERPROFILE%\.claude\pet-ring-state.json`, a small mirror file written by the Claude Code statusline command. This also supplies the session line (model name and context usage), which has no live endpoint.
+
+To enable the statusline mirror, make your statusline command write the payload it receives on stdin to `pet-ring-state.json`. Example snippet for a Python statusline:
+
+```python
+def tee_pet_ring_state(payload):
+    try:
+        state = {
+            'updatedAt': int(time.time() * 1000),
+            'sessionId': payload.get('session_id'),
+            'cwd': payload.get('cwd') or (payload.get('workspace') or {}).get('current_dir'),
+            'model': (payload.get('model') or {}).get('display_name'),
+            'context_window': payload.get('context_window'),
+            'rate_limits': payload.get('rate_limits'),
+        }
+        target = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'pet-ring-state.json')
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(target), suffix='.tmp')
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
+            json.dump(state, f, ensure_ascii=False)
+        os.replace(tmp, target)
+    except Exception:
+        pass
+```
+
+The overlay works without the mirror file too — it then relies on the live endpoint alone and omits the session line.
 
 ## Test
 
@@ -61,16 +95,19 @@ The app reads:
 - `%USERPROFILE%\.codex\.codex-global-state.json` for pet open state and `electron-avatar-overlay-bounds.mascot`.
 - `%USERPROFILE%\.codex\auth.json` for the local ChatGPT access token used with `https://chatgpt.com/backend-api/wham/usage`.
 - `%USERPROFILE%\.codex\logs_2.sqlite` or `logs_1.sqlite` as a cached fallback source for the newest `codex.rate_limits` event.
+- `%USERPROFILE%\.claude\.credentials.json` for the local Claude OAuth token used with `https://api.anthropic.com/api/oauth/usage`.
+- `%USERPROFILE%\.claude\pet-ring-state.json` as the statusline-mirror fallback and session-info source.
 
-The access token is only sent to ChatGPT's usage endpoint and is never logged.
+Each access token is only sent to its own vendor's usage endpoint and is never logged.
 
 ## Current Scope
 
 This Windows version is an MVP:
 
-- Outer ring: short-window remaining percentage.
-- Inner ring: weekly remaining percentage.
-- Tray actions: show/hide, refresh, quit.
+- Outer ring: short-window remaining percentage (Codex).
+- Inner ring: weekly remaining percentage (Codex).
+- Claude panel: 5h and weekly remaining bars, model and context line, live/stale source hint.
+- Tray actions: show/hide rings, show/hide Claude bars, refresh, quit.
 - Single-instance startup so repeated launches do not create duplicate overlays.
 - Transparent always-on-top overlay with click-through mouse behavior.
 - Live usage first, local cached fallback second.

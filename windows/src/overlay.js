@@ -2,8 +2,11 @@
   const canvas = document.getElementById("rings");
   const context = canvas.getContext("2d");
   const USAGE_PANEL_WIDTH = 164;
+  const CLAUDE_COLOR = "#d97757";
+  const CLAUDE_SESSION_STALE_MS = 10 * 60 * 1000;
   let snapshot = {
     usage: { primary: null, secondary: null, source: "none" },
+    claude: null,
     style: {
       outerColor: "#4cebc2",
       innerColor: "#60b2ff",
@@ -166,6 +169,111 @@
     });
   }
 
+  function claudeHeaderRight(claude) {
+    const session = claude.session;
+    const fresh = session && typeof session.ageMs === "number" && session.ageMs < CLAUDE_SESSION_STALE_MS;
+    if (fresh) {
+      return window.LimitRingDisplay.claudeSessionLine(claude);
+    }
+    const source = (claude.limits || {}).source;
+    if (source === "live") {
+      return "Live";
+    }
+    if (source === "statusline" && session) {
+      return window.LimitRingDisplay.formatAge(session.ageMs);
+    }
+    return "";
+  }
+
+  function drawClaudeBar(x, y, barWidth, barHeight, remainingPercent) {
+    context.fillStyle = rgba(CLAUDE_COLOR, 0.12);
+    roundRect(x, y, barWidth, barHeight, 3);
+    context.fill();
+
+    if (remainingPercent === null || remainingPercent === undefined) {
+      context.setLineDash([2, 5]);
+      context.strokeStyle = rgba(CLAUDE_COLOR, 0.35);
+      context.lineWidth = 1;
+      context.beginPath();
+      context.moveTo(x + 2, y + barHeight / 2);
+      context.lineTo(x + barWidth - 2, y + barHeight / 2);
+      context.stroke();
+      context.setLineDash([]);
+      return;
+    }
+
+    const fillWidth = Math.max(0, (barWidth * Math.min(Math.max(remainingPercent, 0), 100)) / 100);
+    const color = colorFor({ remainingPercent }, rgba(CLAUDE_COLOR, 0.92), 1);
+    if (fillWidth >= 1) {
+      context.shadowBlur = 6;
+      context.shadowColor = color;
+      context.fillStyle = color;
+      roundRect(x, y, Math.max(fillWidth, barHeight), barHeight, 3);
+      context.fill();
+      context.shadowBlur = 0;
+    }
+  }
+
+  function drawClaudePanel(claude) {
+    const rows = window.LimitRingDisplay.claudeBarRows(claude);
+    const panelWidth = Math.min(USAGE_PANEL_WIDTH - 12, 152);
+    const panelHeight = 64;
+    const panelX = 36;
+    const panelY = 68;
+
+    context.shadowBlur = 14;
+    context.shadowColor = "rgba(0, 0, 0, 0.50)";
+    context.fillStyle = "rgba(24, 24, 26, 0.88)";
+    roundRect(panelX, panelY, panelWidth, panelHeight, 7);
+    context.fill();
+    context.shadowBlur = 0;
+    context.strokeStyle = "rgba(255, 255, 255, 0.10)";
+    context.lineWidth = 1;
+    context.stroke();
+
+    const headerY = panelY + 13;
+    context.font = "700 9.5px ui-monospace, Cascadia Code, Consolas, monospace";
+    context.textAlign = "left";
+    context.textBaseline = "middle";
+    context.fillStyle = rgba(CLAUDE_COLOR, 0.98);
+    context.fillText("Claude", panelX + 9, headerY);
+
+    const headerRight = claudeHeaderRight(claude);
+    if (headerRight) {
+      context.font = "700 8.5px ui-monospace, Cascadia Code, Consolas, monospace";
+      context.textAlign = "right";
+      context.fillStyle = "rgba(255, 255, 255, 0.62)";
+      context.fillText(headerRight, panelX + panelWidth - 9, headerY, panelWidth - 58);
+    }
+
+    const labelX = panelX + 9;
+    const barX = panelX + 38;
+    const barWidth = 46;
+    const percentX = barX + barWidth + 6;
+    const resetX = panelX + panelWidth - 9;
+    rows.forEach((row, index) => {
+      const y = panelY + 30 + index * 19;
+
+      context.font = "700 9.5px ui-monospace, Cascadia Code, Consolas, monospace";
+      context.textAlign = "left";
+      context.textBaseline = "middle";
+      context.fillStyle = rgba(CLAUDE_COLOR, 0.85);
+      context.fillText(row.label, labelX, y);
+
+      drawClaudeBar(barX, y - 3.5, barWidth, 7, row.remainingPercent);
+
+      context.font = "800 10px ui-monospace, Cascadia Code, Consolas, monospace";
+      context.textAlign = "left";
+      context.fillStyle = "rgba(255, 255, 255, 0.95)";
+      context.fillText(row.percent, percentX, y);
+
+      context.font = "700 10px ui-monospace, Cascadia Code, Consolas, monospace";
+      context.textAlign = "right";
+      context.fillStyle = "rgba(255, 255, 255, 0.90)";
+      context.fillText(row.reset || "", resetX, y);
+    });
+  }
+
   function drawSourceBadge(width, height, usage, centerX) {
     const source = usage.source === "live" ? "Live" : usage.source === "log" ? "Cached" : "";
     if (!source) {
@@ -229,6 +337,9 @@
     drawRing(centerX, centerY, outerRadius, 7, usage.primary, colorFor(usage.primary, rgba(outerColor, 0.80 * outerOpacity), outerOpacity), rgba(outerColor, 0.08 * outerOpacity), rgba(outerColor, 0.18 * outerOpacity), rgba(outerColor, 0.95 * outerOpacity));
     drawRing(centerX, centerY, innerRadius, 6, usage.secondary, colorFor(usage.secondary, rgba(innerColor, 0.78 * innerOpacity), innerOpacity), rgba(innerColor, 0.075 * innerOpacity), rgba(innerColor, 0.17 * innerOpacity), rgba(innerColor, 0.92 * innerOpacity));
     drawText(width, height, usage, { outerColor, innerColor, outerOpacity, innerOpacity });
+    if (snapshot.claude) {
+      drawClaudePanel(snapshot.claude);
+    }
     drawSourceBadge(width, height, usage, centerX);
 
     requestAnimationFrame(draw);
