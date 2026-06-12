@@ -163,24 +163,33 @@
     const labelFont = "700 9.5px ui-monospace, Cascadia Code, Consolas, monospace";
     const valueFont = "800 10px ui-monospace, Cascadia Code, Consolas, monospace";
 
+    const resetParts = rows.map((row) => {
+      const splitAt = row.reset ? row.reset.lastIndexOf(" ") : -1;
+      return splitAt > 0
+        ? { day: row.reset.slice(0, splitAt), time: row.reset.slice(splitAt + 1) }
+        : { day: "", time: row.reset || "" };
+    });
+
     let labelWidth = 0;
     let percentWidth = 0;
-    let resetWidth = 0;
-    rows.forEach((row) => {
+    let dayWidth = 0;
+    let timeWidth = 0;
+    rows.forEach((row, index) => {
       context.font = labelFont;
       labelWidth = Math.max(labelWidth, context.measureText(row.label).width);
       context.font = valueFont;
       percentWidth = Math.max(percentWidth, context.measureText(row.percent).width);
-      if (row.reset) {
-        resetWidth = Math.max(resetWidth, context.measureText(row.reset).width);
-      }
+      dayWidth = Math.max(dayWidth, context.measureText(resetParts[index].day).width);
+      timeWidth = Math.max(timeWidth, context.measureText(resetParts[index].time).width);
     });
-    const totalWidth = labelWidth + 6 + percentWidth + (resetWidth > 0 ? 8 + resetWidth : 0);
+    const hasReset = timeWidth > 0;
+    const totalWidth = labelWidth + 6 + percentWidth + (hasReset ? 8 + (dayWidth > 0 ? dayWidth + 4 : 0) + timeWidth : 0);
     const left = ring.centerX - totalWidth / 2;
 
     rows.forEach((row, index) => {
       const y = ring.size + 8 + index * 15;
       const accent = roleStyle(row.role, style);
+      const reset = resetParts[index];
 
       context.textBaseline = "middle";
       context.shadowBlur = 4;
@@ -193,9 +202,13 @@
       context.fillStyle = "rgba(255, 255, 255, 0.95)";
       context.textAlign = "right";
       context.fillText(row.percent, left + labelWidth + 6 + percentWidth, y);
-      if (row.reset) {
+      if (reset.day) {
         context.textAlign = "left";
-        context.fillText(row.reset, left + labelWidth + 6 + percentWidth + 8, y);
+        context.fillText(reset.day, left + labelWidth + 6 + percentWidth + 8, y);
+      }
+      if (reset.time) {
+        context.textAlign = "right";
+        context.fillText(reset.time, left + totalWidth, y);
       }
       context.shadowBlur = 0;
     });
