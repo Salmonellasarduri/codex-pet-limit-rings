@@ -15,6 +15,11 @@ const STATE_DEBOUNCE_MS = 35;
 const CLAUDE_STATE_DEBOUNCE_MS = 400;
 const FRAME_POLL_MS = 2000;
 const USAGE_POLL_MS = 20000;
+// The Anthropic oauth/usage endpoint rate-limits aggressive polling (429 at the
+// Codex 20s cadence), so live fetches are throttled here no matter which path
+// (poll, statusline watcher, refresh) triggers an update.
+const CLAUDE_LIVE_MIN_INTERVAL_MS = 5 * 60 * 1000;
+const CLAUDE_LIVE_CACHE_TTL_MS = 30 * 60 * 1000;
 const OVERLAY_PADDING = 58;
 const USAGE_PANEL_WIDTH = 164;
 const RING_BELOW_TEXT_HEIGHT = 36;
@@ -43,6 +48,9 @@ class LimitRingsWindowsApp {
     this.pendingClaudeUpdate = null;
     this.claudeVisible = true;
     this.claude = claudeUsage.emptyClaudeState();
+    this.claudeLiveLimits = null;
+    this.claudeLiveAt = 0;
+    this.claudeLiveAttemptAt = 0;
     this.lastBounds = null;
     this.currentAvatarID = null;
   }
@@ -173,7 +181,7 @@ class LimitRingsWindowsApp {
         label: "Refresh Now",
         click: () => {
           this.updateUsage();
-          this.updateClaude();
+          this.updateClaude(true);
           this.updateFrame();
         }
       },
@@ -283,12 +291,25 @@ class LimitRingsWindowsApp {
     }, CLAUDE_STATE_DEBOUNCE_MS);
   }
 
-  async updateClaude() {
-    this.claude = await claudeUsage.readLatestUsage({
+  async updateClaude(forceLive = false) {
+    const now = Date.now();
+    const allowLive = forceLive || now - this.claudeLiveAttemptAt >= CLAUDE_LIVE_MIN_INTERVAL_MS;
+    if (allowLive) {
+      this.claudeLiveAttemptAt = now;
+    }
+    const next = await claudeUsage.readLatestUsage({
       claudeHome: this.claudeHome,
       authPath: this.claudeAuthPath,
-      statePath: this.claudeStatePath
+      statePath: this.claudeStatePath,
+      fetchImpl: allowLive ? globalThis.fetch : null
     });
+    if (next.limits.source === "live") {
+      this.claudeLiveLimits = next.limits;
+      this.claudeLiveAt = now;
+    } else if (this.claudeLiveLimits && now - this.claudeLiveAt < CLAUDE_LIVE_CACHE_TTL_MS) {
+      next.limits = this.claudeLiveLimits;
+    }
+    this.claude = next;
     this.updateTrayMenu();
     this.sendSnapshot(Boolean(this.overlay && this.overlay.isVisible()));
   }

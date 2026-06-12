@@ -209,7 +209,7 @@
     const panelWidth = Math.min(USAGE_PANEL_WIDTH - 12, 152);
     const panelHeight = 24 + rows.length * 19 + (footer ? 14 : 0);
     const panelX = 36;
-    const panelY = 8;
+    const panelY = Math.max(8, window.innerHeight - panelHeight - 8);
 
     context.shadowBlur = 14;
     context.shadowColor = "rgba(0, 0, 0, 0.50)";
