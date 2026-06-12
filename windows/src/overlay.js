@@ -2,7 +2,7 @@
   const canvas = document.getElementById("rings");
   const context = canvas.getContext("2d");
   const USAGE_PANEL_WIDTH = 164;
-  const BELOW_RING_TEXT_HEIGHT = 48;
+  const BELOW_RING_TEXT_HEIGHT = 36;
   const CLAUDE_SESSION_STALE_MS = 10 * 60 * 1000;
   let snapshot = {
     usage: { primary: null, secondary: null, source: "none" },
@@ -160,42 +160,46 @@
   }
 
   function drawWeeklyTextBelowRing(ring, rows, style) {
-    context.textBaseline = "middle";
-    context.textAlign = "center";
-    context.font = "700 9.5px ui-monospace, Cascadia Code, Consolas, monospace";
-    context.shadowBlur = 4;
-    context.shadowColor = "rgba(0, 0, 0, 0.65)";
-    context.fillStyle = "rgba(255, 255, 255, 0.62)";
-    context.fillText("Weekly", ring.centerX, ring.size + 6);
-    context.shadowBlur = 0;
-    context.textAlign = "left";
+    const labelFont = "700 9.5px ui-monospace, Cascadia Code, Consolas, monospace";
+    const valueFont = "800 10px ui-monospace, Cascadia Code, Consolas, monospace";
+
+    let labelWidth = 0;
+    let percentWidth = 0;
+    let resetWidth = 0;
+    rows.forEach((row) => {
+      context.font = labelFont;
+      labelWidth = Math.max(labelWidth, context.measureText(row.label).width);
+      context.font = valueFont;
+      percentWidth = Math.max(percentWidth, context.measureText(row.percent).width);
+      if (row.reset) {
+        resetWidth = Math.max(resetWidth, context.measureText(row.reset).width);
+      }
+    });
+    const totalWidth = labelWidth + 6 + percentWidth + (resetWidth > 0 ? 8 + resetWidth : 0);
+    const left = ring.centerX - totalWidth / 2;
 
     rows.forEach((row, index) => {
-      const y = ring.size + 20 + index * 15;
+      const y = ring.size + 8 + index * 15;
       const accent = roleStyle(row.role, style);
-      const valueText = row.reset ? `${row.percent}  ${row.reset}` : row.percent;
 
       context.textBaseline = "middle";
-      context.textAlign = "left";
-      const labelFont = "700 9.5px ui-monospace, Cascadia Code, Consolas, monospace";
-      const valueFont = "800 10px ui-monospace, Cascadia Code, Consolas, monospace";
-      context.font = labelFont;
-      const labelWidth = context.measureText(row.label).width;
-      context.font = valueFont;
-      const valueWidth = context.measureText(valueText).width;
-
-      let x = ring.centerX - (labelWidth + 6 + valueWidth) / 2;
       context.shadowBlur = 4;
       context.shadowColor = "rgba(0, 0, 0, 0.65)";
       context.font = labelFont;
+      context.textAlign = "left";
       context.fillStyle = rgba(accent.color, 0.98 * accent.opacity);
-      context.fillText(row.label, x, y);
-      x += labelWidth + 6;
+      context.fillText(row.label, left, y);
       context.font = valueFont;
       context.fillStyle = "rgba(255, 255, 255, 0.95)";
-      context.fillText(valueText, x, y);
+      context.textAlign = "right";
+      context.fillText(row.percent, left + labelWidth + 6 + percentWidth, y);
+      if (row.reset) {
+        context.textAlign = "left";
+        context.fillText(row.reset, left + labelWidth + 6 + percentWidth + 8, y);
+      }
       context.shadowBlur = 0;
     });
+    context.textAlign = "left";
   }
 
   function claudeSessionFooter(claude) {
@@ -273,22 +277,19 @@
     }
   }
 
-  function drawSourceBadge(usage, centerX) {
-    const source = usage.source === "live" ? "Live" : usage.source === "log" ? "Cached" : "";
-    if (!source) {
-      return;
-    }
+  function drawRingBadge(centerX) {
+    const text = "Weekly";
     context.font = "700 9px ui-monospace, Cascadia Code, Consolas, monospace";
     context.textAlign = "center";
     context.textBaseline = "middle";
-    const badgeWidth = 42;
+    const badgeWidth = Math.ceil(context.measureText(text).width) + 14;
     const x = centerX - badgeWidth / 2;
     const y = 7;
     context.fillStyle = "rgba(24, 24, 26, 0.56)";
     roundRect(x, y, badgeWidth, 17, 6);
     context.fill();
     context.fillStyle = "rgba(255, 255, 255, 0.70)";
-    context.fillText(source, centerX, y + 8.5);
+    context.fillText(text, centerX, y + 8.5);
   }
 
   function roundRect(x, y, width, height, radius) {
@@ -343,7 +344,7 @@
     const weeklyRows = window.LimitRingDisplay.weeklyRingRows(usage, claude);
     drawWeeklyTextBelowRing(ring, claude ? weeklyRows : weeklyRows.filter((row) => row.role === "outer"), resolvedStyle);
     drawFiveHourPanel(usage, claude, resolvedStyle);
-    drawSourceBadge(usage, centerX);
+    drawRingBadge(centerX);
 
     requestAnimationFrame(draw);
   }
