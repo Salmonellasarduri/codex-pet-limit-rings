@@ -35,6 +35,14 @@
     if (remainingSeconds <= 36 * 60 * 60) {
       return formatDuration(remainingSeconds);
     }
+    return formatResetAbsolute(bucket);
+  }
+
+  function formatResetAbsolute(bucket) {
+    if (!bucket || typeof bucket.resetAt !== "number") {
+      return "";
+    }
+    const resetMs = bucket.resetAt > 10000000000 ? bucket.resetAt : bucket.resetAt * 1000;
     const reset = new Date(resetMs);
     return `${WEEKDAYS[reset.getDay()]} ${reset.getHours()}:${String(reset.getMinutes()).padStart(2, "0")}`;
   }
@@ -63,20 +71,20 @@
     return `${Math.floor(minutes / 60)}h ago`;
   }
 
-  function weeklyRingRows(usage, claude, nowMs = Date.now()) {
+  function weeklyRingRows(usage, claude) {
     const codexWeekly = usage && usage.secondary;
     const claudeWeekly = claude && claude.limits && claude.limits.secondary;
     return [
       {
         label: "Codex",
         percent: formatPercent(codexWeekly),
-        reset: formatResetText(codexWeekly, nowMs),
+        reset: formatResetAbsolute(codexWeekly),
         role: "outer"
       },
       {
         label: "Claude",
         percent: formatPercent(claudeWeekly),
-        reset: formatResetText(claudeWeekly, nowMs),
+        reset: formatResetAbsolute(claudeWeekly),
         role: "inner"
       }
     ];
@@ -123,6 +131,7 @@
     fiveHourBarRows,
     formatAge,
     formatDuration,
+    formatResetAbsolute,
     formatResetText,
     formatWindowLabel,
     weeklyRingRows

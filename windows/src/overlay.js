@@ -2,7 +2,7 @@
   const canvas = document.getElementById("rings");
   const context = canvas.getContext("2d");
   const USAGE_PANEL_WIDTH = 164;
-  const BELOW_RING_TEXT_HEIGHT = 36;
+  const BELOW_RING_TEXT_HEIGHT = 48;
   const CLAUDE_SESSION_STALE_MS = 10 * 60 * 1000;
   let snapshot = {
     usage: { primary: null, secondary: null, source: "none" },
@@ -160,8 +160,18 @@
   }
 
   function drawWeeklyTextBelowRing(ring, rows, style) {
+    context.textBaseline = "middle";
+    context.textAlign = "center";
+    context.font = "700 9.5px ui-monospace, Cascadia Code, Consolas, monospace";
+    context.shadowBlur = 4;
+    context.shadowColor = "rgba(0, 0, 0, 0.65)";
+    context.fillStyle = "rgba(255, 255, 255, 0.62)";
+    context.fillText("Weekly", ring.centerX, ring.size + 6);
+    context.shadowBlur = 0;
+    context.textAlign = "left";
+
     rows.forEach((row, index) => {
-      const y = ring.size + 8 + index * 15;
+      const y = ring.size + 20 + index * 15;
       const accent = roleStyle(row.role, style);
       const valueText = row.reset ? `${row.percent}  ${row.reset}` : row.percent;
 

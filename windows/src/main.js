@@ -22,7 +22,7 @@ const CLAUDE_LIVE_MIN_INTERVAL_MS = 5 * 60 * 1000;
 const CLAUDE_LIVE_CACHE_TTL_MS = 30 * 60 * 1000;
 const OVERLAY_PADDING = 58;
 const USAGE_PANEL_WIDTH = 164;
-const RING_BELOW_TEXT_HEIGHT = 36;
+const RING_BELOW_TEXT_HEIGHT = 48;
 const APP_ICON_PATH = path.join(__dirname, "..", "assets", "spellbook-icon.png");
 
 class LimitRingsWindowsApp {

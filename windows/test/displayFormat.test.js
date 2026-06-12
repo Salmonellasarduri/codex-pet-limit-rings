@@ -5,6 +5,7 @@ const {
   fiveHourBarRows,
   formatAge,
   formatDuration,
+  formatResetAbsolute,
   formatResetText,
   formatWindowLabel,
   weeklyRingRows
@@ -25,15 +26,28 @@ test("formatResetText renders short remaining time", () => {
 
 test("weeklyRingRows pairs Codex and Claude weekly buckets", () => {
   const now = Date.UTC(2026, 0, 1, 0, 0, 0);
+  const weekdayTime = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{1,2}:\d{2}$/;
   const rows = weeklyRingRows(
     { secondary: { remainingPercent: 82, windowMinutes: 10080, resetAt: (now + 30 * 60 * 60 * 1000) / 1000 } },
-    { limits: { secondary: { remainingPercent: 22, windowMinutes: 10080, resetAt: now + 63 * 60 * 1000 } } },
-    now
+    { limits: { secondary: { remainingPercent: 22, windowMinutes: 10080, resetAt: now + 63 * 60 * 1000 } } }
   );
-  assert.deepEqual(rows, [
-    { label: "Codex", percent: "82%", reset: "30:00", role: "outer" },
-    { label: "Claude", percent: "22%", reset: "1:03", role: "inner" }
-  ]);
+  assert.equal(rows[0].label, "Codex");
+  assert.equal(rows[0].percent, "82%");
+  assert.match(rows[0].reset, weekdayTime);
+  assert.equal(rows[0].role, "outer");
+  assert.equal(rows[1].label, "Claude");
+  assert.equal(rows[1].percent, "22%");
+  assert.match(rows[1].reset, weekdayTime);
+  assert.equal(rows[1].role, "inner");
+});
+
+test("formatResetAbsolute always uses weekday time even when reset is near", () => {
+  const soon = Date.UTC(2026, 0, 1, 0, 5, 0);
+  const weekdayTime = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{1,2}:\d{2}$/;
+  assert.match(formatResetAbsolute({ resetAt: soon }), weekdayTime);
+  assert.match(formatResetAbsolute({ resetAt: soon / 1000 }), weekdayTime);
+  assert.equal(formatResetAbsolute({}), "");
+  assert.equal(formatResetAbsolute(null), "");
 });
 
 test("weeklyRingRows tolerates missing data", () => {
