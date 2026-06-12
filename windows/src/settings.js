@@ -9,7 +9,7 @@ const RING_COLOR_PRESETS = [
     title: "Default",
     colors: {
       outer: "#4cebc2",
-      inner: "#60b2ff"
+      inner: "#d97757"
     }
   },
   {

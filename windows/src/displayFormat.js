@@ -63,21 +63,41 @@
     return `${Math.floor(minutes / 60)}h ago`;
   }
 
-  function claudeBarRows(claude, nowMs = Date.now()) {
-    const limits = (claude && claude.limits) || {};
+  function weeklyRingRows(usage, claude, nowMs = Date.now()) {
+    const codexWeekly = usage && usage.secondary;
+    const claudeWeekly = claude && claude.limits && claude.limits.secondary;
     return [
       {
-        label: formatWindowLabel(limits.primary, "5h"),
-        percent: formatPercent(limits.primary),
-        reset: formatResetText(limits.primary, nowMs),
-        remainingPercent: limits.primary ? limits.primary.remainingPercent : null,
+        label: "Codex",
+        percent: formatPercent(codexWeekly),
+        reset: formatResetText(codexWeekly, nowMs),
         role: "outer"
       },
       {
-        label: formatWindowLabel(limits.secondary, "Week"),
-        percent: formatPercent(limits.secondary),
-        reset: formatResetText(limits.secondary, nowMs),
-        remainingPercent: limits.secondary ? limits.secondary.remainingPercent : null,
+        label: "Claude",
+        percent: formatPercent(claudeWeekly),
+        reset: formatResetText(claudeWeekly, nowMs),
+        role: "inner"
+      }
+    ];
+  }
+
+  function fiveHourBarRows(usage, claude, nowMs = Date.now()) {
+    const codexShort = usage && usage.primary;
+    const claudeShort = claude && claude.limits && claude.limits.primary;
+    return [
+      {
+        label: "Codex",
+        percent: formatPercent(codexShort),
+        reset: formatResetText(codexShort, nowMs),
+        remainingPercent: codexShort && typeof codexShort.remainingPercent === "number" ? codexShort.remainingPercent : null,
+        role: "outer"
+      },
+      {
+        label: "Claude",
+        percent: formatPercent(claudeShort),
+        reset: formatResetText(claudeShort, nowMs),
+        remainingPercent: claudeShort && typeof claudeShort.remainingPercent === "number" ? claudeShort.remainingPercent : null,
         role: "inner"
       }
     ];
@@ -98,32 +118,13 @@
     return parts.join(" · ");
   }
 
-  function limitRows(usage, nowMs = Date.now()) {
-    const primary = usage && usage.primary;
-    const secondary = usage && usage.secondary;
-    return [
-      {
-        label: formatWindowLabel(primary, "Short"),
-        percent: formatPercent(primary),
-        reset: formatResetText(primary, nowMs),
-        role: "outer"
-      },
-      {
-        label: formatWindowLabel(secondary, "Week"),
-        percent: formatPercent(secondary),
-        reset: formatResetText(secondary, nowMs),
-        role: "inner"
-      }
-    ];
-  }
-
   return {
-    claudeBarRows,
     claudeSessionLine,
+    fiveHourBarRows,
     formatAge,
     formatDuration,
     formatResetText,
     formatWindowLabel,
-    limitRows
+    weeklyRingRows
   };
 });

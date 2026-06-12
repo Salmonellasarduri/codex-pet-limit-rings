@@ -1,13 +1,13 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
-  claudeBarRows,
   claudeSessionLine,
+  fiveHourBarRows,
   formatAge,
   formatDuration,
   formatResetText,
   formatWindowLabel,
-  limitRows
+  weeklyRingRows
 } = require("../src/displayFormat");
 
 test("formatWindowLabel uses compact time labels", () => {
@@ -23,43 +23,46 @@ test("formatResetText renders short remaining time", () => {
   assert.equal(formatDuration(59 * 60), "59m");
 });
 
-test("limitRows renders outer and inner rows", () => {
+test("weeklyRingRows pairs Codex and Claude weekly buckets", () => {
   const now = Date.UTC(2026, 0, 1, 0, 0, 0);
-  const rows = limitRows(
-    {
-      primary: { remainingPercent: 91, windowMinutes: 240, resetAt: (now + 63 * 60 * 1000) / 1000 },
-      secondary: { remainingPercent: 82, windowMinutes: 10080 }
-    },
+  const rows = weeklyRingRows(
+    { secondary: { remainingPercent: 82, windowMinutes: 10080, resetAt: (now + 30 * 60 * 60 * 1000) / 1000 } },
+    { limits: { secondary: { remainingPercent: 22, windowMinutes: 10080, resetAt: now + 63 * 60 * 1000 } } },
     now
   );
   assert.deepEqual(rows, [
-    { label: "4h", percent: "91%", reset: "1:03", role: "outer" },
-    { label: "Week", percent: "82%", reset: "", role: "inner" }
+    { label: "Codex", percent: "82%", reset: "30:00", role: "outer" },
+    { label: "Claude", percent: "22%", reset: "1:03", role: "inner" }
   ]);
 });
 
-test("claudeBarRows renders five-hour and weekly bars with remaining percent", () => {
+test("weeklyRingRows tolerates missing data", () => {
+  const rows = weeklyRingRows(null, null);
+  assert.deepEqual(rows, [
+    { label: "Codex", percent: "--", reset: "", role: "outer" },
+    { label: "Claude", percent: "--", reset: "", role: "inner" }
+  ]);
+});
+
+test("fiveHourBarRows pairs Codex and Claude short windows with remaining percent", () => {
   const now = Date.UTC(2026, 0, 1, 0, 0, 0);
-  const rows = claudeBarRows(
-    {
-      limits: {
-        primary: { remainingPercent: 63, windowMinutes: 300, resetAt: now + 63 * 60 * 1000 },
-        secondary: { remainingPercent: 22, windowMinutes: 10080 }
-      }
-    },
+  const rows = fiveHourBarRows(
+    { primary: { remainingPercent: 91, windowMinutes: 300, resetAt: (now + 63 * 60 * 1000) / 1000 } },
+    { limits: { primary: { remainingPercent: 63, windowMinutes: 300, resetAt: now + 45 * 60 * 1000 } } },
     now
   );
   assert.deepEqual(rows, [
-    { label: "5h", percent: "63%", reset: "1:03", remainingPercent: 63, role: "outer" },
-    { label: "Week", percent: "22%", reset: "", remainingPercent: 22, role: "inner" }
+    { label: "Codex", percent: "91%", reset: "1:03", remainingPercent: 91, role: "outer" },
+    { label: "Claude", percent: "63%", reset: "45m", remainingPercent: 63, role: "inner" }
   ]);
 });
 
-test("claudeBarRows tolerates missing limits", () => {
-  const rows = claudeBarRows({ limits: { primary: null, secondary: null } });
+test("fiveHourBarRows tolerates missing data", () => {
+  const rows = fiveHourBarRows(null, { limits: { primary: null } });
   assert.equal(rows[0].percent, "--");
   assert.equal(rows[0].remainingPercent, null);
-  assert.equal(rows[1].label, "Week");
+  assert.equal(rows[1].percent, "--");
+  assert.equal(rows[1].remainingPercent, null);
 });
 
 test("claudeSessionLine joins model and context usage", () => {

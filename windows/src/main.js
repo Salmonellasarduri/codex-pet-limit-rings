@@ -17,6 +17,7 @@ const FRAME_POLL_MS = 2000;
 const USAGE_POLL_MS = 20000;
 const OVERLAY_PADDING = 58;
 const USAGE_PANEL_WIDTH = 164;
+const RING_BELOW_TEXT_HEIGHT = 36;
 const APP_ICON_PATH = path.join(__dirname, "..", "assets", "spellbook-icon.png");
 
 class LimitRingsWindowsApp {
@@ -125,7 +126,7 @@ class LimitRingsWindowsApp {
         }
       },
       {
-        label: "Show Claude Bars",
+        label: "Show Claude",
         type: "checkbox",
         checked: this.claudeVisible,
         click: (item) => {
@@ -137,11 +138,11 @@ class LimitRingsWindowsApp {
         label: "Ring Colors",
         submenu: [
           {
-            label: "Outer Ring",
+            label: "Codex (Outer Ring)",
             submenu: this.colorMenuTemplate("outer", settings)
           },
           {
-            label: "Inner Ring",
+            label: "Claude (Inner Ring)",
             submenu: this.colorMenuTemplate("inner", settings)
           },
           { type: "separator" },
@@ -159,11 +160,11 @@ class LimitRingsWindowsApp {
         label: "Ring Opacity",
         submenu: [
           {
-            label: "Outer Ring",
+            label: "Codex (Outer Ring)",
             submenu: this.opacityMenuTemplate("outer", settings)
           },
           {
-            label: "Inner Ring",
+            label: "Claude (Inner Ring)",
             submenu: this.opacityMenuTemplate("inner", settings)
           }
         ]
@@ -360,7 +361,7 @@ class LimitRingsWindowsApp {
       maximizable: false,
       parent: this.overlay,
       modal: false,
-      title: ring === "inner" ? "Choose Inner Ring Color" : "Choose Outer Ring Color",
+      title: ring === "inner" ? "Choose Claude (Inner Ring) Color" : "Choose Codex (Outer Ring) Color",
       webPreferences: {
         preload: path.join(__dirname, "colorPickerPreload.js"),
         contextIsolation: true,
@@ -426,7 +427,7 @@ function panelBoundsForPet(petFrame) {
     x: Math.round(petFrame.x + petFrame.width / 2 - size / 2 - USAGE_PANEL_WIDTH),
     y: Math.round(petFrame.y + petFrame.height / 2 - size / 2),
     width: size + USAGE_PANEL_WIDTH,
-    height: size
+    height: size + RING_BELOW_TEXT_HEIGHT
   };
 }
 

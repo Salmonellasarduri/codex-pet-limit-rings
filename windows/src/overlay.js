@@ -2,14 +2,14 @@
   const canvas = document.getElementById("rings");
   const context = canvas.getContext("2d");
   const USAGE_PANEL_WIDTH = 164;
-  const CLAUDE_COLOR = "#d97757";
+  const BELOW_RING_TEXT_HEIGHT = 36;
   const CLAUDE_SESSION_STALE_MS = 10 * 60 * 1000;
   let snapshot = {
     usage: { primary: null, secondary: null, source: "none" },
     claude: null,
     style: {
       outerColor: "#4cebc2",
-      innerColor: "#60b2ff",
+      innerColor: "#d97757",
       outerOpacity: 1,
       innerOpacity: 1
     },
@@ -114,19 +114,100 @@
   }
 
   function ringGeometry(width, height) {
-    const ringSize = Math.max(1, Math.min(width - USAGE_PANEL_WIDTH, height));
+    const ringSize = Math.max(1, Math.min(width - USAGE_PANEL_WIDTH, height - BELOW_RING_TEXT_HEIGHT));
     const ringLeft = width - ringSize;
     return {
       size: ringSize,
       centerX: ringLeft + ringSize / 2,
-      centerY: height / 2
+      centerY: ringSize / 2
     };
   }
 
-  function drawText(width, height, usage, style) {
-    const rows = window.LimitRingDisplay.limitRows(usage);
+  function roleStyle(role, style) {
+    if (role === "inner") {
+      return { color: style.innerColor, opacity: style.innerOpacity };
+    }
+    return { color: style.outerColor, opacity: style.outerOpacity };
+  }
+
+  function drawBar(x, y, barWidth, barHeight, remainingPercent, colorHex, opacity) {
+    context.fillStyle = rgba(colorHex, 0.12 * opacity);
+    roundRect(x, y, barWidth, barHeight, 3);
+    context.fill();
+
+    if (remainingPercent === null || remainingPercent === undefined) {
+      context.setLineDash([2, 5]);
+      context.strokeStyle = rgba(colorHex, 0.35 * opacity);
+      context.lineWidth = 1;
+      context.beginPath();
+      context.moveTo(x + 2, y + barHeight / 2);
+      context.lineTo(x + barWidth - 2, y + barHeight / 2);
+      context.stroke();
+      context.setLineDash([]);
+      return;
+    }
+
+    const fillWidth = Math.max(0, (barWidth * Math.min(Math.max(remainingPercent, 0), 100)) / 100);
+    const color = colorFor({ remainingPercent }, rgba(colorHex, 0.92 * opacity), opacity);
+    if (fillWidth >= 1) {
+      context.shadowBlur = 6;
+      context.shadowColor = color;
+      context.fillStyle = color;
+      roundRect(x, y, Math.max(fillWidth, barHeight), barHeight, 3);
+      context.fill();
+      context.shadowBlur = 0;
+    }
+  }
+
+  function drawWeeklyTextBelowRing(ring, rows, style) {
+    rows.forEach((row, index) => {
+      const y = ring.size + 8 + index * 15;
+      const accent = roleStyle(row.role, style);
+      const valueText = row.reset ? `${row.percent}  ${row.reset}` : row.percent;
+
+      context.textBaseline = "middle";
+      context.textAlign = "left";
+      const labelFont = "700 9.5px ui-monospace, Cascadia Code, Consolas, monospace";
+      const valueFont = "800 10px ui-monospace, Cascadia Code, Consolas, monospace";
+      context.font = labelFont;
+      const labelWidth = context.measureText(row.label).width;
+      context.font = valueFont;
+      const valueWidth = context.measureText(valueText).width;
+
+      let x = ring.centerX - (labelWidth + 6 + valueWidth) / 2;
+      context.shadowBlur = 4;
+      context.shadowColor = "rgba(0, 0, 0, 0.65)";
+      context.font = labelFont;
+      context.fillStyle = rgba(accent.color, 0.98 * accent.opacity);
+      context.fillText(row.label, x, y);
+      x += labelWidth + 6;
+      context.font = valueFont;
+      context.fillStyle = "rgba(255, 255, 255, 0.95)";
+      context.fillText(valueText, x, y);
+      context.shadowBlur = 0;
+    });
+  }
+
+  function claudeSessionFooter(claude) {
+    const session = claude.session;
+    const fresh = session && typeof session.ageMs === "number" && session.ageMs < CLAUDE_SESSION_STALE_MS;
+    if (fresh) {
+      return window.LimitRingDisplay.claudeSessionLine(claude);
+    }
+    const source = (claude.limits || {}).source;
+    if (source === "statusline" && session) {
+      const age = window.LimitRingDisplay.formatAge(session.ageMs);
+      return age ? `Claude data ${age}` : "";
+    }
+    return "";
+  }
+
+  function drawFiveHourPanel(usage, claude, style) {
+    const allRows = window.LimitRingDisplay.fiveHourBarRows(usage, claude);
+    const rows = claude ? allRows : allRows.filter((row) => row.role === "outer");
+    const footer = claude ? claudeSessionFooter(claude) : "";
     const panelWidth = Math.min(USAGE_PANEL_WIDTH - 12, 152);
-    const panelHeight = 52;
+    const panelHeight = 24 + rows.length * 19 + (footer ? 14 : 0);
     const panelX = 36;
     const panelY = 8;
 
@@ -140,127 +221,28 @@
     context.lineWidth = 1;
     context.stroke();
 
-    const labelX = panelX + 18;
-    const percentX = panelX + panelWidth - 96;
-    const resetX = panelX + panelWidth - 10;
-    rows.forEach((row, index) => {
-      const y = panelY + 18 + index * 22;
-      const color = row.role === "outer" ? style.outerColor : style.innerColor;
-      const opacity = row.role === "outer" ? style.outerOpacity : style.innerOpacity;
-
-      context.fillStyle = rgba(color, 0.95 * opacity);
-      roundRect(panelX + 9, y - 8, 3, 16, 2);
-      context.fill();
-
-      context.font = "700 9.5px ui-monospace, Cascadia Code, Consolas, monospace";
-      context.textAlign = "left";
-      context.textBaseline = "middle";
-      context.fillStyle = rgba(color, 0.98 * opacity);
-      context.fillText(row.label, labelX, y);
-
-      context.font = "800 10px ui-monospace, Cascadia Code, Consolas, monospace";
-      context.fillStyle = "rgba(255, 255, 255, 0.95)";
-      context.fillText(row.percent, percentX, y);
-
-      context.font = "700 10px ui-monospace, Cascadia Code, Consolas, monospace";
-      context.textAlign = "right";
-      context.fillStyle = "rgba(255, 255, 255, 0.90)";
-      context.fillText(row.reset || "", resetX, y);
-    });
-  }
-
-  function claudeHeaderRight(claude) {
-    const session = claude.session;
-    const fresh = session && typeof session.ageMs === "number" && session.ageMs < CLAUDE_SESSION_STALE_MS;
-    if (fresh) {
-      return window.LimitRingDisplay.claudeSessionLine(claude);
-    }
-    const source = (claude.limits || {}).source;
-    if (source === "live") {
-      return "Live";
-    }
-    if (source === "statusline" && session) {
-      return window.LimitRingDisplay.formatAge(session.ageMs);
-    }
-    return "";
-  }
-
-  function drawClaudeBar(x, y, barWidth, barHeight, remainingPercent) {
-    context.fillStyle = rgba(CLAUDE_COLOR, 0.12);
-    roundRect(x, y, barWidth, barHeight, 3);
-    context.fill();
-
-    if (remainingPercent === null || remainingPercent === undefined) {
-      context.setLineDash([2, 5]);
-      context.strokeStyle = rgba(CLAUDE_COLOR, 0.35);
-      context.lineWidth = 1;
-      context.beginPath();
-      context.moveTo(x + 2, y + barHeight / 2);
-      context.lineTo(x + barWidth - 2, y + barHeight / 2);
-      context.stroke();
-      context.setLineDash([]);
-      return;
-    }
-
-    const fillWidth = Math.max(0, (barWidth * Math.min(Math.max(remainingPercent, 0), 100)) / 100);
-    const color = colorFor({ remainingPercent }, rgba(CLAUDE_COLOR, 0.92), 1);
-    if (fillWidth >= 1) {
-      context.shadowBlur = 6;
-      context.shadowColor = color;
-      context.fillStyle = color;
-      roundRect(x, y, Math.max(fillWidth, barHeight), barHeight, 3);
-      context.fill();
-      context.shadowBlur = 0;
-    }
-  }
-
-  function drawClaudePanel(claude) {
-    const rows = window.LimitRingDisplay.claudeBarRows(claude);
-    const panelWidth = Math.min(USAGE_PANEL_WIDTH - 12, 152);
-    const panelHeight = 64;
-    const panelX = 36;
-    const panelY = 68;
-
-    context.shadowBlur = 14;
-    context.shadowColor = "rgba(0, 0, 0, 0.50)";
-    context.fillStyle = "rgba(24, 24, 26, 0.88)";
-    roundRect(panelX, panelY, panelWidth, panelHeight, 7);
-    context.fill();
-    context.shadowBlur = 0;
-    context.strokeStyle = "rgba(255, 255, 255, 0.10)";
-    context.lineWidth = 1;
-    context.stroke();
-
-    const headerY = panelY + 13;
     context.font = "700 9.5px ui-monospace, Cascadia Code, Consolas, monospace";
     context.textAlign = "left";
     context.textBaseline = "middle";
-    context.fillStyle = rgba(CLAUDE_COLOR, 0.98);
-    context.fillText("Claude", panelX + 9, headerY);
-
-    const headerRight = claudeHeaderRight(claude);
-    if (headerRight) {
-      context.font = "700 8.5px ui-monospace, Cascadia Code, Consolas, monospace";
-      context.textAlign = "right";
-      context.fillStyle = "rgba(255, 255, 255, 0.62)";
-      context.fillText(headerRight, panelX + panelWidth - 9, headerY, panelWidth - 58);
-    }
+    context.fillStyle = "rgba(255, 255, 255, 0.62)";
+    context.fillText("5h", panelX + 9, panelY + 13);
 
     const labelX = panelX + 9;
-    const barX = panelX + 38;
-    const barWidth = 46;
+    const barX = panelX + 46;
+    const barWidth = 36;
     const percentX = barX + barWidth + 6;
     const resetX = panelX + panelWidth - 9;
     rows.forEach((row, index) => {
       const y = panelY + 30 + index * 19;
+      const accent = roleStyle(row.role, style);
 
       context.font = "700 9.5px ui-monospace, Cascadia Code, Consolas, monospace";
       context.textAlign = "left";
       context.textBaseline = "middle";
-      context.fillStyle = rgba(CLAUDE_COLOR, 0.85);
+      context.fillStyle = rgba(accent.color, 0.92 * accent.opacity);
       context.fillText(row.label, labelX, y);
 
-      drawClaudeBar(barX, y - 3.5, barWidth, 7, row.remainingPercent);
+      drawBar(barX, y - 3.5, barWidth, 7, row.remainingPercent, accent.color, accent.opacity);
 
       context.font = "800 10px ui-monospace, Cascadia Code, Consolas, monospace";
       context.textAlign = "left";
@@ -272,9 +254,16 @@
       context.fillStyle = "rgba(255, 255, 255, 0.90)";
       context.fillText(row.reset || "", resetX, y);
     });
+
+    if (footer) {
+      context.font = "700 8.5px ui-monospace, Cascadia Code, Consolas, monospace";
+      context.textAlign = "left";
+      context.fillStyle = "rgba(255, 255, 255, 0.58)";
+      context.fillText(footer, panelX + 9, panelY + 66, panelWidth - 18);
+    }
   }
 
-  function drawSourceBadge(width, height, usage, centerX) {
+  function drawSourceBadge(usage, centerX) {
     const source = usage.source === "live" ? "Live" : usage.source === "log" ? "Cached" : "";
     if (!source) {
       return;
@@ -320,11 +309,14 @@
     const breathe = 0.22 + Math.sin(phase) * 0.05;
 
     const usage = snapshot.usage || {};
+    const claude = snapshot.claude || null;
+    const claudeLimits = (claude && claude.limits) || {};
     const style = snapshot.style || {};
     const outerColor = style.outerColor || "#4cebc2";
-    const innerColor = style.innerColor || "#60b2ff";
+    const innerColor = style.innerColor || "#d97757";
     const outerOpacity = typeof style.outerOpacity === "number" ? style.outerOpacity : 1;
     const innerOpacity = typeof style.innerOpacity === "number" ? style.innerOpacity : 1;
+    const resolvedStyle = { outerColor, innerColor, outerOpacity, innerOpacity };
     const halo = hexToRgb(outerColor);
     const gradient = context.createRadialGradient(centerX, centerY, innerRadius - 10, centerX, centerY, outerRadius + 10);
     gradient.addColorStop(0, `rgba(${halo.r}, ${halo.g}, ${halo.b}, 0)`);
@@ -334,13 +326,14 @@
     context.arc(centerX, centerY, outerRadius + 9, 0, Math.PI * 2);
     context.fill();
 
-    drawRing(centerX, centerY, outerRadius, 7, usage.primary, colorFor(usage.primary, rgba(outerColor, 0.80 * outerOpacity), outerOpacity), rgba(outerColor, 0.08 * outerOpacity), rgba(outerColor, 0.18 * outerOpacity), rgba(outerColor, 0.95 * outerOpacity));
-    drawRing(centerX, centerY, innerRadius, 6, usage.secondary, colorFor(usage.secondary, rgba(innerColor, 0.78 * innerOpacity), innerOpacity), rgba(innerColor, 0.075 * innerOpacity), rgba(innerColor, 0.17 * innerOpacity), rgba(innerColor, 0.92 * innerOpacity));
-    drawText(width, height, usage, { outerColor, innerColor, outerOpacity, innerOpacity });
-    if (snapshot.claude) {
-      drawClaudePanel(snapshot.claude);
+    drawRing(centerX, centerY, outerRadius, 7, usage.secondary, colorFor(usage.secondary, rgba(outerColor, 0.80 * outerOpacity), outerOpacity), rgba(outerColor, 0.08 * outerOpacity), rgba(outerColor, 0.18 * outerOpacity), rgba(outerColor, 0.95 * outerOpacity));
+    if (claude) {
+      drawRing(centerX, centerY, innerRadius, 6, claudeLimits.secondary || null, colorFor(claudeLimits.secondary, rgba(innerColor, 0.78 * innerOpacity), innerOpacity), rgba(innerColor, 0.075 * innerOpacity), rgba(innerColor, 0.17 * innerOpacity), rgba(innerColor, 0.92 * innerOpacity));
     }
-    drawSourceBadge(width, height, usage, centerX);
+    const weeklyRows = window.LimitRingDisplay.weeklyRingRows(usage, claude);
+    drawWeeklyTextBelowRing(ring, claude ? weeklyRows : weeklyRows.filter((row) => row.role === "outer"), resolvedStyle);
+    drawFiveHourPanel(usage, claude, resolvedStyle);
+    drawSourceBadge(usage, centerX);
 
     requestAnimationFrame(draw);
   }

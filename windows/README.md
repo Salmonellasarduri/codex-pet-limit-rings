@@ -4,7 +4,7 @@ This is a Windows companion app for Codex pets. It keeps the same boundary as th
 
 The app reads local Codex state from `%USERPROFILE%\.codex`, follows the current Codex pet with a transparent click-through overlay, and draws usage-limit rings around it.
 
-It can also show Claude Code limits next to the same pet: Codex stays on the rings, Claude gets a compact two-bar panel (5h window and weekly) below the Codex readout, plus the active session's model and context usage.
+It can also show Claude Code limits next to the same pet: the rings pair the weekly windows (outer ring Codex, inner ring Claude) with percent and reset time written below the ring, and a compact panel on the left pairs the 5h windows as bars with percent and reset time, plus the active Claude session's model and context usage.
 
 ## Run
 
@@ -46,10 +46,10 @@ Use the tray icon to toggle rings, refresh usage data, or quit.
 
 The tray menu also includes:
 
-- `Ring Colors` for separate outer and inner ring presets or custom colors.
-- `Ring Opacity` for separate outer and inner opacity presets.
+- `Ring Colors` for separate Codex (outer ring) and Claude (inner ring) presets or custom colors.
+- `Ring Opacity` for separate Codex (outer ring) and Claude (inner ring) opacity presets.
 - `Reset This Pet` to clear saved color and opacity settings for the current Codex pet.
-- `Show Claude Bars` to toggle the Claude limits panel.
+- `Show Claude` to toggle the Claude ring, text, and bar row.
 
 ## Claude Data
 
@@ -104,10 +104,11 @@ Each access token is only sent to its own vendor's usage endpoint and is never l
 
 This Windows version is an MVP:
 
-- Outer ring: short-window remaining percentage (Codex).
-- Inner ring: weekly remaining percentage (Codex).
-- Claude panel: 5h and weekly remaining bars, model and context line, live/stale source hint.
-- Tray actions: show/hide rings, show/hide Claude bars, refresh, quit.
+- Outer ring: Codex weekly remaining percentage.
+- Inner ring: Claude weekly remaining percentage.
+- Below the ring: weekly percent and reset time for both vendors.
+- Left panel: Codex and Claude 5h remaining bars with percent and reset time, plus the Claude model and context line.
+- Tray actions: show/hide rings, show/hide Claude, refresh, quit.
 - Single-instance startup so repeated launches do not create duplicate overlays.
 - Transparent always-on-top overlay with click-through mouse behavior.
 - Live usage first, local cached fallback second.
