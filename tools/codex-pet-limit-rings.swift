@@ -27,6 +27,7 @@ struct LimitState {
 private let limitStatePollInterval: TimeInterval = 20.0
 private let petFrameFallbackPollInterval: TimeInterval = 2.0
 private let petFrameStateDebounceInterval: TimeInterval = 0.035
+private let ringAnimationFrameInterval: TimeInterval = 1.0 / 6.0
 private let ringPanelPadding: CGFloat = 38.0
 private let readoutBottomExtension: CGFloat = 44.0
 private let ringsVisibleDefaultsKey = "CodexPetLimitRings.ringsVisible"
@@ -879,16 +880,32 @@ final class LimitRingView: NSView {
         didSet { needsDisplay = true }
     }
     var showsReadout: Bool = false {
-        didSet { needsDisplay = true }
+        didSet {
+            guard showsReadout != oldValue else { return }
+            needsDisplay = true
+        }
     }
     var colorPalette: RingColorPalette = .default {
-        didSet { needsDisplay = true }
+        didSet {
+            guard !colorPalette.primary.isEqual(oldValue.primary) || !colorPalette.secondary.isEqual(oldValue.secondary) else { return }
+            needsDisplay = true
+        }
     }
     var opacitySettings: RingOpacitySettings = .default {
-        didSet { needsDisplay = true }
+        didSet {
+            guard opacitySettings.primary != oldValue.primary || opacitySettings.secondary != oldValue.secondary else { return }
+            needsDisplay = true
+        }
     }
     var ringCenter: CGPoint? {
-        didSet { needsDisplay = true }
+        didSet {
+            guard ringCenter != oldValue else { return }
+            needsDisplay = true
+        }
+    }
+
+    var shouldAnimate: Bool {
+        showsReadout
     }
 
     override var isOpaque: Bool { false }
@@ -998,10 +1015,7 @@ final class LimitRingsApp: NSObject {
             self?.updateFrame()
         }
         installDragFollow()
-        animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.ringView.phase = Date().timeIntervalSince(self.startTime) / 4.6
-        }
+        updateAnimationTimer()
     }
 
     private func updateState() {
@@ -1014,6 +1028,7 @@ final class LimitRingsApp: NSObject {
                 self.ringView.state = state
                 self.updateSummaryMenuItem()
                 self.stateReadInFlight = false
+                self.updateAnimationTimer()
             }
         }
     }
@@ -1090,6 +1105,7 @@ final class LimitRingsApp: NSObject {
             ringView.ringCenter = nil
             ringView.showsReadout = false
             panel.orderOut(nil)
+            updateAnimationTimer()
             return
         }
 
@@ -1097,8 +1113,11 @@ final class LimitRingsApp: NSObject {
         updateCurrentAvatarID(frameReader.readSelectedAvatarID())
         setPanelFrame(forPetFrameTopLeft: petFrame)
         if ringsVisible {
-            panel.orderFrontRegardless()
+            if !panel.isVisible {
+                panel.orderFrontRegardless()
+            }
         }
+        updateAnimationTimer()
     }
 
     private func setPanelFrame(forPetFrameTopLeft petFrame: CGRect) {
@@ -1107,8 +1126,27 @@ final class LimitRingsApp: NSObject {
         let topLeft = CGPoint(x: petFrame.midX - ringSize / 2, y: petFrame.midY - ringSize / 2)
         let origin = appKitOriginFromTopLeft(topLeft, size: panelSize)
 
-        ringView.ringCenter = CGPoint(x: panelSize.width / 2, y: ringSize / 2 + readoutBottomExtension)
-        panel.setFrame(CGRect(origin: origin, size: panelSize), display: true)
+        let ringCenter = CGPoint(x: panelSize.width / 2, y: ringSize / 2 + readoutBottomExtension)
+        let panelFrame = CGRect(origin: origin, size: panelSize)
+        ringView.ringCenter = ringCenter
+        if panel.frame != panelFrame {
+            panel.setFrame(panelFrame, display: true)
+        }
+    }
+
+    private func updateAnimationTimer() {
+        let shouldAnimate = ringsVisible && currentPetFrameAppKit != nil && panel.isVisible && ringView.shouldAnimate
+        if shouldAnimate {
+            guard animationTimer == nil else { return }
+            ringView.phase = Date().timeIntervalSince(startTime) / 4.6
+            animationTimer = Timer.scheduledTimer(withTimeInterval: ringAnimationFrameInterval, repeats: true) { [weak self] _ in
+                guard let self else { return }
+                self.ringView.phase = Date().timeIntervalSince(self.startTime) / 4.6
+            }
+        } else {
+            animationTimer?.invalidate()
+            animationTimer = nil
+        }
     }
 
     private func installStatusMenu() {
@@ -1305,12 +1343,15 @@ final class LimitRingsApp: NSObject {
     private func updateRingVisibility() {
         updateShowRingsMenuItem()
         if ringsVisible, currentPetFrameAppKit != nil {
-            panel.orderFrontRegardless()
+            if !panel.isVisible {
+                panel.orderFrontRegardless()
+            }
             updateTooltip(at: NSEvent.mouseLocation)
         } else {
             ringView.showsReadout = false
             panel.orderOut(nil)
         }
+        updateAnimationTimer()
     }
 
     private func setRingsVisible(_ visible: Bool) {
@@ -1600,6 +1641,7 @@ final class LimitRingsApp: NSObject {
         let origin = CGPoint(x: center.x - ringCenter.x, y: center.y - ringCenter.y)
         panel.setFrame(CGRect(origin: origin, size: size), display: true)
         ringView.showsReadout = false
+        updateAnimationTimer()
     }
 
     private func endDragFollow() {
@@ -1614,10 +1656,12 @@ final class LimitRingsApp: NSObject {
     private func updateTooltip(at mouse: CGPoint) {
         if !ringsVisible || currentPetFrameAppKit == nil || dragCenterOffset != nil {
             ringView.showsReadout = false
+            updateAnimationTimer()
             return
         }
 
         ringView.showsReadout = isHoveringRingOrPet(mouse)
+        updateAnimationTimer()
     }
 
     private func isHoveringRingOrPet(_ mouse: CGPoint) -> Bool {
