@@ -48,3 +48,61 @@ test("parseCodexState hides frame when pet overlay is closed", () => {
   assert.equal(parsed.open, false);
   assert.equal(parsed.petFrame, null);
 });
+
+test("parseCodexState restores dimensions from a matching display snapshot", () => {
+  const parsed = parseCodexState({
+    "electron-avatar-overlay-open": true,
+    "electron-avatar-overlay-bounds": {
+      x: 3684,
+      y: -67,
+      displayId: 2901477347,
+      byDisplayId: {
+        2901477347: {
+          x: 3684,
+          y: -67
+        },
+        431825184: {
+          x: 3458,
+          y: -117,
+          anchor: {
+            x: 3684,
+            y: -67,
+            width: 102,
+            height: 111
+          },
+          mascot: {
+            left: 226,
+            top: 50,
+            width: 102,
+            height: 111
+          }
+        }
+      }
+    }
+  });
+
+  assert.deepEqual(parsed.petFrame, {
+    x: 3684,
+    y: -67,
+    width: 102,
+    height: 111
+  });
+});
+
+test("parseCodexState rejects non-positive persisted dimensions", () => {
+  const parsed = parseCodexState({
+    "electron-avatar-overlay-open": true,
+    "electron-avatar-overlay-bounds": {
+      x: 10,
+      y: 20,
+      mascot: {
+        left: 1,
+        top: 2,
+        width: 0,
+        height: 4
+      }
+    }
+  });
+
+  assert.equal(parsed.petFrame, null);
+});
